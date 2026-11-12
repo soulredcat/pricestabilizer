@@ -62,6 +62,12 @@ operational_quote = 5000.0      # 3,000 reserve + ~2,000 for the band
 treasury_token = 0.0
 treasury_quote = 1000.0
 
+[treasury]
+budget_quote = 1000.0           # approved accumulation budget (treasury wallet)
+proposal_quote = 250.0          # one proposal; an operator must approve it
+min_proposal_interval_secs = 86400
+proposal_ttl_secs = 21600       # unapproved proposals expire after 6 hours
+
 [feed]
 source = "scenario"
 scenarios = [

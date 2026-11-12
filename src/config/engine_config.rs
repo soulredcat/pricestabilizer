@@ -10,6 +10,7 @@ use crate::config::engine_sections::{GrowthConfig, LiquidityConfig, PriceConfig,
 use crate::config::execution_sections::{AssetsConfig, RiskConfig};
 use crate::config::feed_section::FeedConfig;
 use crate::config::report_section::ReportConfig;
+use crate::config::treasury_section::{OperatorConfig, TreasuryConfig};
 use crate::config::venue_section::VenueConfig;
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +23,10 @@ pub struct EngineConfig {
     pub assets: AssetsConfig,
     pub risk: RiskConfig,
     pub venue: VenueConfig,
+    pub treasury: TreasuryConfig,
     pub feed: FeedConfig,
+    #[serde(default)]
+    pub operator: OperatorConfig,
     #[serde(default)]
     pub report: ReportConfig,
 }

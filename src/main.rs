@@ -8,8 +8,10 @@ mod config;
 mod engine;
 mod execution;
 mod market;
+mod operator;
 mod portfolio;
 mod report;
+mod treasury;
 mod venue;
 
 use std::path::Path;

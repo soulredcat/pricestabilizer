@@ -1,8 +1,9 @@
-//! Checks for assets, risk, venue and feed sections.
+//! Checks for assets, risk, venue, treasury and feed sections.
 
 use crate::app::error::AppError;
 use crate::config::execution_sections::{AssetsConfig, RiskConfig};
 use crate::config::feed_section::FeedConfig;
+use crate::config::treasury_section::TreasuryConfig;
 use crate::config::validation::rules::{check, fraction, non_negative, nonzero, positive, rate};
 use crate::config::venue_section::VenueConfig;
 
@@ -51,6 +52,12 @@ pub fn check_venue(venue: &VenueConfig) -> Result<(), AppError> {
             non_negative("venue.treasury_quote", settings.treasury_quote)
         }
     }
+}
+
+pub fn check_treasury(treasury: &TreasuryConfig) -> Result<(), AppError> {
+    non_negative("treasury.budget_quote", treasury.budget_quote)?;
+    positive("treasury.proposal_quote", treasury.proposal_quote)?;
+    nonzero("treasury.proposal_ttl_secs", treasury.proposal_ttl_secs)
 }
 
 pub fn check_feed(feed: &FeedConfig) -> Result<(), AppError> {

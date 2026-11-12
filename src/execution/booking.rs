@@ -20,9 +20,13 @@ pub fn book(
         } => {
             let account = account_of(wallet);
             let bought = sell.counterpart();
-            poster.post(EntryKind::Swap, sell, account, Account::Market, units)?;
+            let kind = match wallet {
+                Wallet::Operational => EntryKind::Swap,
+                Wallet::Treasury => EntryKind::TreasuryBuy,
+            };
+            poster.post(kind, sell, account, Account::Market, units)?;
             poster.post(
-                EntryKind::Swap,
+                kind,
                 bought,
                 Account::Market,
                 account,

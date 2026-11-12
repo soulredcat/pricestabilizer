@@ -29,4 +29,6 @@ pub struct ExecutionOutcome {
     pub books: Option<BooksSnapshot>,
     /// Fed into the engine on the next snapshot.
     pub feedback: ExecutionFeedback,
+    /// Whether an approved treasury purchase filled this snapshot.
+    pub treasury_filled: bool,
 }

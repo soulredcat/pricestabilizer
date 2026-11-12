@@ -13,6 +13,7 @@ use crate::engine::mode::operating_mode::OperatingMode;
 use crate::engine::price::assessor::PriceAssessor;
 use crate::engine::price::confidence::PriceAssessment;
 use crate::engine::regime::classifier::{RegimeClassifier, RegimeReading};
+use crate::engine::regime::market_regime::Regime;
 use crate::engine::strategy::decision::TickDecision;
 use crate::engine::strategy::feedback::ExecutionFeedback;
 use crate::market::snapshot::MarketSnapshot;
@@ -23,6 +24,7 @@ pub struct StrategyPipeline {
     regime: RegimeClassifier,
     mode: ModeController,
     band: BandKeeper,
+    last_regime: Option<Regime>,
 }
 
 impl StrategyPipeline {
@@ -33,7 +35,21 @@ impl StrategyPipeline {
             regime: RegimeClassifier::new(&config.regime),
             mode: ModeController::default(),
             band: BandKeeper::new(&config.liquidity),
+            last_regime: None,
         }
+    }
+
+    pub fn pause(&mut self) {
+        self.mode.pause();
+    }
+
+    /// Leaves protection unless the market is still in an emergency.
+    pub fn resume(&mut self) -> bool {
+        if matches!(self.last_regime, Some(Regime::Emergency(_))) {
+            return false;
+        }
+        self.mode.resume();
+        true
     }
 
     pub fn on_snapshot(
@@ -46,6 +62,7 @@ impl StrategyPipeline {
         }
         let price = self.price.assess(snapshot);
         let regime = self.regime.classify(snapshot, &price);
+        self.last_regime = Some(regime.regime);
         let target_price = self.target_curve.price_at(snapshot.timestamp);
         let below_target = price
             .reference_price()

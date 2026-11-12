@@ -42,6 +42,7 @@ pub enum EntryKind {
     RemoveLiquidity,
     FeeClaim,
     ActionCost,
+    TreasuryBuy,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

@@ -71,10 +71,13 @@ impl Executor {
         &self.ledger
     }
 
+    /// Runs this snapshot's liquidity action and, when given, an approved
+    /// treasury purchase of `treasury_buy_quote`.
     pub fn on_decision(
         &mut self,
         market: &MarketSnapshot,
         action: LiquidityAction,
+        treasury_buy_quote: Option<f64>,
     ) -> ExecutionOutcome {
         let mut outcome = ExecutionOutcome::default();
         if let Err(error) = self.venue.observe(market) {
@@ -82,6 +85,14 @@ impl Executor {
         }
         if let LiquidityAction::Open(band) | LiquidityAction::Reposition(band) = action {
             self.move_band(band, market, &mut outcome);
+        }
+        if let Some(quote) = treasury_buy_quote {
+            let buy = VenueOrder::Swap {
+                wallet: Wallet::Treasury,
+                sell: Asset::Quote,
+                units: self.scale.to_units(Asset::Quote, quote),
+            };
+            outcome.treasury_filled = self.run(buy, market, &mut outcome);
         }
         match self.inspect(market) {
             Ok(inspection) => {
@@ -179,6 +190,13 @@ impl Executor {
                 false
             }
         }
+    }
+
+    /// An operator resumed: losses so far and past failures are acknowledged.
+    /// A broken ledger is not; it needs a reconciliation, not a resume.
+    pub fn acknowledge_losses(&mut self) {
+        self.pnl.reset_baseline();
+        self.consecutive_failures = 0;
     }
 
     fn fail(&mut self, error: VenueError, outcome: &mut ExecutionOutcome) {

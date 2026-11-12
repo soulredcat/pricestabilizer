@@ -60,6 +60,7 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     let open = executor.on_decision(
         &market(1, 1.0),
         LiquidityAction::Open(PriceBand::around(1.0, 0.05)),
+        None,
     );
     assert!(open.feedback.band_held);
     assert_eq!(open.feedback.alert, None);
@@ -67,6 +68,7 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     let moved = executor.on_decision(
         &market(2, 1.08),
         LiquidityAction::Reposition(PriceBand::around(1.08, 0.05)),
+        None,
     );
     let labels: Vec<_> = moved.orders.iter().map(|order| order.label()).collect();
     assert_eq!(labels.first(), Some(&"remove_band"));
@@ -78,9 +80,35 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
 fn holding_places_no_orders() {
     let config = config();
     let mut executor = Executor::open(&config, open_venue(&config)).expect("opens");
-    let outcome = executor.on_decision(&market(1, 1.0), LiquidityAction::Hold(HoldReason::InBand));
+    let outcome = executor.on_decision(
+        &market(1, 1.0),
+        LiquidityAction::Hold(HoldReason::InBand),
+        None,
+    );
     assert!(outcome.orders.is_empty());
     assert!(outcome.books.is_some());
+}
+
+#[test]
+fn approved_treasury_buy_spends_treasury_quote_only() {
+    let config = config();
+    let mut executor = Executor::open(&config, open_venue(&config)).expect("opens");
+    let outcome = executor.on_decision(
+        &market(1, 1.0),
+        LiquidityAction::Hold(HoldReason::InBand),
+        Some(250.0),
+    );
+    assert!(outcome.treasury_filled);
+    assert_eq!(
+        outcome.feedback.alert, None,
+        "treasury booked and reconciled"
+    );
+    let treasury = executor
+        .ledger()
+        .holding(crate::portfolio::ledger::Account::Treasury);
+    // 250 spent plus the 0.25 order cost, both from the treasury wallet.
+    assert_eq!(treasury.quote, 749_750_000);
+    assert!(treasury.token > 0);
 }
 
 #[test]
@@ -91,7 +119,7 @@ fn repeated_venue_failures_raise_an_alert() {
     let alerts: Vec<_> = (0..3)
         .map(|tick| {
             executor
-                .on_decision(&market(tick, 1.0), open)
+                .on_decision(&market(tick, 1.0), open, None)
                 .feedback
                 .alert
         })

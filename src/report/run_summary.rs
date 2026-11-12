@@ -2,13 +2,13 @@
 
 use std::collections::BTreeMap;
 
+use crate::app::session::{TickEvent, TickReport};
 use crate::engine::liquidity::action::LiquidityAction;
 use crate::engine::liquidity::price_band::PriceBand;
 use crate::engine::mode::operating_mode::OperatingMode;
-use crate::engine::strategy::decision::TickDecision;
-use crate::execution::outcome::ExecutionOutcome;
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::pnl_tracker::BooksSnapshot;
+use crate::treasury::proposal::TreasuryEvent;
 
 pub type Counter = BTreeMap<&'static str, u64>;
 
@@ -41,6 +41,9 @@ pub struct RunSummary {
     pub orders: Counter,
     /// Books as last marked.
     pub books: Option<BooksSnapshot>,
+    /// Operator and treasury events by label.
+    pub events: Counter,
+    pub treasury_spent: f64,
 }
 
 impl RunSummary {
@@ -51,12 +54,9 @@ impl RunSummary {
         }
     }
 
-    pub fn record(
-        &mut self,
-        snapshot: &MarketSnapshot,
-        decision: &TickDecision,
-        outcome: &ExecutionOutcome,
-    ) {
+    pub fn record(&mut self, snapshot: &MarketSnapshot, report: &TickReport) {
+        let decision = &report.decision;
+        let outcome = &report.outcome;
         if self.ticks == 0 {
             self.first_timestamp = snapshot.timestamp;
             self.first_spot = snapshot.spot_price;
@@ -97,6 +97,12 @@ impl RunSummary {
             bump(&mut self.orders, order.label());
         }
         self.books = outcome.books.or(self.books);
+        for event in &report.events {
+            bump(&mut self.events, event.label());
+            if let TickEvent::Treasury(TreasuryEvent::Executed { quote, .. }) = event {
+                self.treasury_spent += quote;
+            }
+        }
     }
 }
 

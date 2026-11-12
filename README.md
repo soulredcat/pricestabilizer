@@ -50,7 +50,7 @@ snapshot ─► price assessor ─► regime classifier ─► mode controller �
 ```text
 src/
 ├── main.rs                      CLI entry point
-├── app/                         wiring: run loop and error type
+├── app/                         run loop, per-feed trading session, error type
 ├── config/                      TOML config: root, engine sections, feed, validation
 ├── market/
 │   ├── snapshot.rs              the one market shape the engine understands
@@ -66,12 +66,14 @@ src/
 │   ├── liquidity/               price band, liquidity intents, band keeper
 │   └── strategy/                tick decision, execution feedback, pipeline
 ├── execution/                   band funding, risk gate, booking, executor
+├── treasury/                    accumulation proposals and the treasury desk
+├── operator/                    operator commands and the followed command file
 ├── portfolio/                   asset units, holdings, double-entry ledger, PnL
 ├── venue/
 │   ├── adapter.rs               the Venue trait every market implements
 │   ├── order.rs                 orders, fills, wallets, venue errors
 │   └── simulated/               paper venue and its band position
-└── report/                      run summary, text rendering, ledger export
+└── report/                      run summary, text, live event log, ledger export
 ```
 
 ## Running
@@ -105,14 +107,36 @@ their own metadata:
 Timestamps must strictly increase. Prices must be positive and depth and
 volume non-negative, or the run stops with the offending line.
 
+## Operator commands
+
+Set `[operator] commands_path` to a JSON-lines file. The engine follows it
+like a log: lines appended while it runs take effect once a snapshot reaches
+their `at` time.
+
+```json
+{"at": 1767312000, "command": "pause"}
+{"at": 1767398400, "command": "resume"}
+{"at": 1767229300, "command": "approve", "proposal": 1}
+{"at": 1767229300, "command": "reject", "proposal": 2}
+```
+
+- `pause` latches protection at once.
+- `resume` leaves protection only if the market is no longer in an
+  emergency; it acknowledges losses so far (the drawdown peak and daily
+  baseline restart). A broken ledger is never cleared by a resume.
+- Treasury proposals are announced on stderr, for example
+  `[feed @ 1767229200] treasury_proposed #1`. Only an `approve` naming that
+  number lets the treasury buy, and only while the price is trusted and the
+  engine is not in protection. Unapproved proposals expire.
+
 ## Roadmap
 
 1. ~~Inventory and ledger in integer base units.~~ Done.
 2. ~~Band position simulation with fees, costs and PnL.~~ Done.
 3. ~~Risk limits gating every order; loss limits trip protection.~~ Done.
-4. Treasury budget and an accumulation policy behind operator approval.
+4. ~~Treasury budget and accumulation proposals behind operator approval.~~ Done.
 5. Venue adapter interface: quote, simulate, execute, reconcile.
-6. Operator controls: resume from protection, emergency pause.
+6. ~~Operator controls: pause, resume, approve, reject.~~ Done.
 
 ## Repository rules
 

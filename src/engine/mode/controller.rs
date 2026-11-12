@@ -32,6 +32,16 @@ impl ModeController {
             OperatingMode::MarketMaking
         }
     }
+
+    pub fn pause(&mut self) {
+        self.latched = self.latched.or(Some(EmergencyCause::OperatorPause));
+    }
+
+    /// Operator approval to leave protection; the caller checks that the
+    /// market has recovered first.
+    pub fn resume(&mut self) {
+        self.latched = None;
+    }
 }
 
 #[cfg(test)]
@@ -58,6 +68,21 @@ mod tests {
         assert_eq!(
             controller.update(Regime::Sideways, false, None),
             OperatingMode::Protection(EmergencyCause::LossLimit)
+        );
+    }
+
+    #[test]
+    fn operator_pause_holds_until_resumed() {
+        let mut controller = ModeController::default();
+        controller.pause();
+        assert_eq!(
+            controller.update(Regime::Sideways, true, None),
+            OperatingMode::Protection(EmergencyCause::OperatorPause)
+        );
+        controller.resume();
+        assert_eq!(
+            controller.update(Regime::Sideways, true, None),
+            OperatingMode::AccumulationReview
         );
     }
 

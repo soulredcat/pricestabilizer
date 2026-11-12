@@ -67,6 +67,13 @@ impl PnlTracker {
         drawdown > self.max_drawdown || day_open_equity - equity > self.max_daily_loss_quote
     }
 
+    /// After an operator resumes, losses so far are acknowledged: the peak
+    /// and the day's opening equity restart from the next mark.
+    pub fn reset_baseline(&mut self) {
+        self.peak_equity = 0.0;
+        self.day_open = None;
+    }
+
     pub fn snapshot(&self, equity: f64, hold_equity: f64, unclaimed_fees: f64) -> BooksSnapshot {
         BooksSnapshot {
             equity,

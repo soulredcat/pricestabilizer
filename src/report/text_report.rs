@@ -36,6 +36,11 @@ pub fn render(summary: &RunSummary) -> String {
     lines.push(format!("  band         {}", band_line(summary)));
     lines.push(format!("  orders       {}", counts(&summary.orders)));
     lines.push(format!("  books        {}", books_line(summary)));
+    lines.push(format!(
+        "  events       {}; treasury spent {:.2}",
+        counts(&summary.events),
+        summary.treasury_spent
+    ));
     lines.push(format!("  protection   {}", protection_line(summary)));
     lines.join("\n")
 }
