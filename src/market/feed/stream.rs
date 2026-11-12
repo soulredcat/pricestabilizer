@@ -22,5 +22,6 @@ pub fn open_feeds(config: &FeedConfig) -> Result<Vec<MarketFeed>, AppError> {
             .map(|kind| generator::feed(*kind, settings))
             .collect()),
         FeedConfig::Jsonl(settings) => Ok(vec![jsonl::open(&settings.path)?]),
+        FeedConfig::Stdin => Ok(vec![jsonl::stdin()]),
     }
 }

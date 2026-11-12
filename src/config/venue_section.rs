@@ -7,6 +7,15 @@ use serde::Deserialize;
 pub enum VenueConfig {
     /// Paper venue: fills against each snapshot, holds simulated wallets.
     Simulated(SimulatedVenueConfig),
+    /// A connector process speaking the JSON-lines protocol on stdio.
+    External(ExternalVenueConfig),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalVenueConfig {
+    /// Program and arguments, for example `["node", "connector.js"]`.
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

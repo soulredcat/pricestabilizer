@@ -40,6 +40,9 @@ pub enum AppError {
         path: PathBuf,
         source: io::Error,
     },
+    ConnectorIo {
+        source: io::Error,
+    },
 }
 
 impl fmt::Display for AppError {
@@ -69,6 +72,7 @@ impl fmt::Display for AppError {
             Self::LedgerExport { path, source } => {
                 write!(f, "cannot write ledger {}: {source}", path.display())
             }
+            Self::ConnectorIo { source } => write!(f, "connector stdio failed: {source}"),
         }
     }
 }

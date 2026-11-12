@@ -1,8 +1,8 @@
 //! The two assets of the pair and their integer base units.
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Asset {
     Token,
@@ -54,6 +54,12 @@ impl UnitScale {
 /// 2^53, which 18-decimal assets exceed quickly.
 pub fn serialize_units<S: Serializer>(units: &u128, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.collect_str(units)
+}
+
+/// Reads base units written by [`serialize_units`]: a decimal string.
+pub fn deserialize_units<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
+    let text = String::deserialize(deserializer)?;
+    text.parse().map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]

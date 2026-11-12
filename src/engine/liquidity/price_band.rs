@@ -1,6 +1,8 @@
 //! A price band `[lower, upper]` in quote units: prices, never ticks or levels.
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PriceBand {
     pub lower: f64,
     pub upper: f64,

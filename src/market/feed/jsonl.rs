@@ -1,9 +1,10 @@
-//! Reads snapshots from a JSON-lines file: the hand-off point for any external
-//! chain connector. Blank lines are skipped; every other line is one snapshot.
+//! Reads JSON-lines snapshots from a file or, live, from standard input: the
+//! hand-off point for any external chain connector. Blank lines are skipped;
+//! every other line is one snapshot.
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::app::error::AppError;
 use crate::market::feed::stream::MarketFeed;
@@ -14,16 +15,32 @@ pub fn open(path: &Path) -> Result<MarketFeed, AppError> {
         path: path.to_path_buf(),
         source,
     })?;
-    let owned_path = path.to_path_buf();
-    let snapshots = BufReader::new(file)
+    Ok(from_reader(
+        path.display().to_string(),
+        path.to_path_buf(),
+        BufReader::new(file),
+    ))
+}
+
+/// Snapshots piped in by a connector, processed as each line arrives.
+pub fn stdin() -> MarketFeed {
+    from_reader(
+        "stdin".to_owned(),
+        PathBuf::from("<stdin>"),
+        io::stdin().lock(),
+    )
+}
+
+fn from_reader(name: String, origin: PathBuf, reader: impl BufRead + 'static) -> MarketFeed {
+    let snapshots = reader
         .lines()
         .enumerate()
         .filter(|(_, line)| !matches!(line, Ok(text) if text.trim().is_empty()))
-        .map(move |(index, line)| parse_line(&owned_path, index + 1, line));
-    Ok(MarketFeed {
-        name: path.display().to_string(),
+        .map(move |(index, line)| parse_line(&origin, index + 1, line));
+    MarketFeed {
+        name,
         snapshots: Box::new(snapshots),
-    })
+    }
 }
 
 fn parse_line(

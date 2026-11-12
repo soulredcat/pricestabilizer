@@ -3,6 +3,8 @@
 
 use crate::app::error::AppError;
 use crate::config::engine_config::EngineConfig;
+use crate::engine::mode::operating_mode::OperatingMode;
+use crate::engine::regime::market_regime::EmergencyCause;
 use crate::engine::strategy::decision::TickDecision;
 use crate::engine::strategy::feedback::ExecutionFeedback;
 use crate::engine::strategy::pipeline::StrategyPipeline;
@@ -20,6 +22,8 @@ use crate::venue::venue_factory::open_venue;
 pub enum TickEvent {
     Operator(OperatorEvent),
     Treasury(TreasuryEvent),
+    /// Protection just latched.
+    Protection(EmergencyCause),
 }
 
 impl TickEvent {
@@ -27,6 +31,7 @@ impl TickEvent {
         match self {
             Self::Operator(event) => event.label(),
             Self::Treasury(event) => event.label(),
+            Self::Protection(_) => "protection_latched",
         }
     }
 }
@@ -43,22 +48,24 @@ pub struct TradingSession {
     treasury: TreasuryDesk,
     inbox: CommandInbox,
     feedback: ExecutionFeedback,
+    protected: bool,
 }
 
 impl TradingSession {
     pub fn open(config: &EngineConfig, feed_name: &str) -> Result<Self, AppError> {
-        let executor = Executor::open(config, open_venue(config)).map_err(|error| {
-            AppError::VenueUnavailable {
+        let executor = open_venue(config)
+            .and_then(|venue| Executor::open(config, venue))
+            .map_err(|error| AppError::VenueUnavailable {
                 feed: feed_name.to_owned(),
                 reason: error.label(),
-            }
-        })?;
+            })?;
         Ok(Self {
             pipeline: StrategyPipeline::new(config),
             executor,
             treasury: TreasuryDesk::new(&config.treasury),
             inbox: CommandInbox::open(config.operator.commands_path.as_deref())?,
             feedback: ExecutionFeedback::default(),
+            protected: false,
         })
     }
 
@@ -72,6 +79,14 @@ impl TradingSession {
             self.apply(command, &mut events);
         }
         let decision = self.pipeline.on_snapshot(snapshot, self.feedback);
+        let protection = match decision.mode {
+            OperatingMode::Protection(cause) => Some(cause),
+            _ => None,
+        };
+        if let (Some(cause), false) = (protection, self.protected) {
+            events.push(TickEvent::Protection(cause));
+        }
+        self.protected = protection.is_some();
         let mut treasury_events = Vec::new();
         let buy = self.treasury.on_tick(
             snapshot.timestamp,

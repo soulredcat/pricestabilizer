@@ -51,6 +51,11 @@ pub fn check_venue(venue: &VenueConfig) -> Result<(), AppError> {
             non_negative("venue.treasury_token", settings.treasury_token)?;
             non_negative("venue.treasury_quote", settings.treasury_quote)
         }
+        VenueConfig::External(settings) => check(
+            !settings.command.is_empty(),
+            "venue.command",
+            "must name the connector program",
+        ),
     }
 }
 
@@ -73,6 +78,6 @@ pub fn check_feed(feed: &FeedConfig) -> Result<(), AppError> {
             positive("feed.start_price", settings.start_price)?;
             positive("feed.start_quote_depth", settings.start_quote_depth)
         }
-        FeedConfig::Jsonl(_) => Ok(()),
+        FeedConfig::Jsonl(_) | FeedConfig::Stdin => Ok(()),
     }
 }

@@ -1,12 +1,12 @@
 //! The one market shape the engine understands.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// One observation of a TOKEN/QUOTE market on any venue: an AMM pool, a
 /// concentrated-liquidity pool or an order book. Connectors produce these; the
 /// engine never sees addresses, ticks, decimals or SDK types. Unknown extra
 /// fields are ignored so connectors may attach their own metadata.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MarketSnapshot {
     /// Unix seconds (UTC).
     pub timestamp: u64,

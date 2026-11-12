@@ -1,10 +1,20 @@
 //! Base units of both assets held in one place.
 
-use crate::portfolio::asset::Asset;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+use crate::portfolio::asset::{Asset, deserialize_units, serialize_units};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Holding {
+    #[serde(
+        serialize_with = "serialize_units",
+        deserialize_with = "deserialize_units"
+    )]
     pub token: u128,
+    #[serde(
+        serialize_with = "serialize_units",
+        deserialize_with = "deserialize_units"
+    )]
     pub quote: u128,
 }
 

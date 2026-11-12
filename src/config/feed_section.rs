@@ -13,6 +13,8 @@ pub enum FeedConfig {
     Scenario(ScenarioFeedConfig),
     /// Snapshots written by an external connector, one JSON object per line.
     Jsonl(JsonlFeedConfig),
+    /// The same format piped in live on standard input.
+    Stdin,
 }
 
 #[derive(Debug, Deserialize)]

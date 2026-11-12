@@ -56,7 +56,7 @@ impl Venue for BrokenVenue {
 #[test]
 fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config)).expect("opens");
+    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let open = executor.on_decision(
         &market(1, 1.0),
         LiquidityAction::Open(PriceBand::around(1.0, 0.05)),
@@ -79,7 +79,7 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
 #[test]
 fn holding_places_no_orders() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config)).expect("opens");
+    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
         LiquidityAction::Hold(HoldReason::InBand),
@@ -92,7 +92,7 @@ fn holding_places_no_orders() {
 #[test]
 fn approved_treasury_buy_spends_treasury_quote_only() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config)).expect("opens");
+    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
         LiquidityAction::Hold(HoldReason::InBand),

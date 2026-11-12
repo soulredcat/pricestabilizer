@@ -7,6 +7,7 @@ use crate::treasury::proposal::TreasuryEvent;
 pub fn line(feed_name: &str, timestamp: u64, event: TickEvent) -> String {
     let detail = match event {
         TickEvent::Operator(_) => String::new(),
+        TickEvent::Protection(cause) => format!(" ({})", cause.label()),
         TickEvent::Treasury(TreasuryEvent::Executed { id, quote }) => {
             format!(" #{id} spent {quote:.2} quote")
         }

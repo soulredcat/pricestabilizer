@@ -8,10 +8,11 @@ latched protection mode when something abnormal happens. It never knows which
 chain or venue it is running on. Everything chain-specific lives in a connector
 outside this repository that turns its market into generic snapshots.
 
-> **Status: v0.2, paper trading.** Decisions are executed against a paper
-> venue with a double-entry ledger, a risk gate and loss limits. No real
-> venue adapter ships in this repository. Every threshold in the example
-> config is an uncalibrated starting point for simulation.
+> **Status: v0.3, paper trading and connector protocol.** Decisions are
+> executed through a risk gate against a venue, with a double-entry ledger
+> reconciled every snapshot. The repository ships a paper venue and a
+> chain-agnostic connector protocol; no chain connector ships here. Every
+> threshold in the example config is an uncalibrated starting point.
 
 ## Principles
 
@@ -72,6 +73,7 @@ src/
 ├── venue/
 │   ├── adapter.rs               the Venue trait every market implements
 │   ├── order.rs                 orders, fills, wallets, venue errors
+│   ├── external/                connector protocol, process client, paper server
 │   └── simulated/               paper venue and its band position
 └── report/                      run summary, text, live event log, ledger export
 ```
@@ -89,12 +91,17 @@ summary per scenario.
 
 ## Feeding real market data
 
-Point the feed at a JSON-lines file written by any connector:
+Point the feed at a JSON-lines file written by any connector, or pipe the
+same lines in live:
 
 ```toml
 [feed]
-source = "jsonl"
+source = "jsonl"        # or: source = "stdin"
 path = "snapshots.jsonl"
+```
+
+```bash
+my-connector --snapshots | pricestabilizer live.toml
 ```
 
 One snapshot per line. Extra fields are ignored, so connectors may attach
@@ -106,6 +113,47 @@ their own metadata:
 
 Timestamps must strictly increase. Prices must be positive and depth and
 volume non-negative, or the run stops with the offending line.
+
+## Writing a venue connector
+
+A connector executes orders on one concrete market, in any language. Set
+
+```toml
+[venue]
+kind = "external"
+command = ["node", "connector.js"]
+```
+
+and the engine starts that process and speaks JSON lines on its stdin and
+stdout, one request and one response per line, in order:
+
+| `method`   | request fields          | `ok` answer                                    |
+|------------|-------------------------|------------------------------------------------|
+| `observe`  | `market` (snapshot)     | `null`                                         |
+| `execute`  | `order`, `market`       | fill: `received`, `spent`, `fees_claimed`, `action_cost`, `swap_cost_quote` |
+| `balances` | `wallet`                | holding: `token`, `quote`                      |
+| `position` | `market`                | `token`, `quote`, `unclaimed_fees`, or `null`  |
+
+```text
+→ {"id":1,"method":"balances","wallet":"operational"}
+← {"id":1,"ok":{"token":"4000000000000","quote":"5000000000"}}
+→ {"id":2,"method":"execute","order":{"type":"remove_band"},"market":{…}}
+← {"id":2,"error":"no_position"}
+```
+
+Orders are `swap` (`wallet`, `sell`, `units`), `add_band` (`band` with
+`lower`/`upper` prices, `token_units`, `quote_units`) and `remove_band`.
+Base units are decimal **strings**. Error codes: `insufficient_operational`,
+`insufficient_treasury`, `no_position`, `position_exists`, `no_liquidity`;
+anything else counts as a connector failure, and repeated failures trip
+protection.
+
+The binary contains a reference connector, the paper venue served over this
+protocol. A real connector must answer the same calls the same way:
+
+```bash
+pricestabilizer paper-connector config/simulation.example.toml
+```
 
 ## Operator commands
 
@@ -135,8 +183,10 @@ their `at` time.
 2. ~~Band position simulation with fees, costs and PnL.~~ Done.
 3. ~~Risk limits gating every order; loss limits trip protection.~~ Done.
 4. ~~Treasury budget and accumulation proposals behind operator approval.~~ Done.
-5. Venue adapter interface: quote, simulate, execute, reconcile.
+5. ~~Venue connector protocol with a reference paper connector.~~ Done.
 6. ~~Operator controls: pause, resume, approve, reject.~~ Done.
+7. Calibrate every threshold on recorded market data, then shadow-run
+   against a testnet connector before any pilot.
 
 ## Repository rules
 
