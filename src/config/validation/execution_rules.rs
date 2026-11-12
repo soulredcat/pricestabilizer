@@ -106,5 +106,9 @@ pub fn check_feed(feed: &FeedConfig) -> Result<(), AppError> {
         FeedConfig::Stdin(settings) => {
             nonzero("feed.max_snapshot_age_secs", settings.max_snapshot_age_secs)
         }
+        FeedConfig::Follow(settings) => {
+            nonzero("feed.max_snapshot_age_secs", settings.max_snapshot_age_secs)?;
+            nonzero("feed.poll_millis", settings.poll_millis)
+        }
     }
 }

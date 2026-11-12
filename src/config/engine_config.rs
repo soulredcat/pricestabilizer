@@ -43,6 +43,33 @@ impl EngineConfig {
         Self::parse(&text, path)
     }
 
+    /// One line on what this config will do, for `check-config`.
+    pub fn describe(&self) -> String {
+        let feed = match &self.feed {
+            FeedConfig::Scenario(settings) => format!("{} scenarios", settings.scenarios.len()),
+            FeedConfig::Jsonl(settings) => format!("file {}", settings.path.display()),
+            FeedConfig::Stdin(_) => "live on stdin".to_owned(),
+            FeedConfig::Follow(settings) => format!("live from {}", settings.path.display()),
+        };
+        let venue = match &self.venue {
+            VenueConfig::Simulated(_) => "paper venue".to_owned(),
+            VenueConfig::External(settings) if settings.send_orders => {
+                format!("external venue {:?}, SENDING orders", settings.command)
+            }
+            VenueConfig::External(settings) => {
+                format!("external venue {:?}, orders withheld", settings.command)
+            }
+        };
+        let state = self
+            .state
+            .dir
+            .as_ref()
+            .map_or("no state".to_owned(), |dir| {
+                format!("state in {}", dir.display())
+            });
+        format!("feed {feed}; {venue}; {state}")
+    }
+
     /// Parses and validates; `origin` only labels errors.
     pub fn parse(text: &str, origin: &Path) -> Result<Self, AppError> {
         let config: Self = toml::from_str(text).map_err(|source| AppError::ConfigParse {

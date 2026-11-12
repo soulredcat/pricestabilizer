@@ -34,8 +34,26 @@ mod tests {
     const EXAMPLE: &str = include_str!("../../../config/simulation.example.toml");
 
     #[test]
-    fn example_config_is_valid() {
+    fn example_configs_are_valid() {
         assert!(EngineConfig::parse(EXAMPLE, Path::new("example")).is_ok());
+        let live = include_str!("../../../config/live.example.toml");
+        let config = EngineConfig::parse(live, Path::new("live")).expect("valid live template");
+        assert!(config.describe().contains("orders withheld"));
+    }
+
+    #[test]
+    fn sending_orders_requires_a_state_directory() {
+        let live = include_str!("../../../config/live.example.toml")
+            .replace("send_orders = false", "send_orders = true")
+            .replace("dir = \"/data/state\"", "");
+        let error = EngineConfig::parse(&live, Path::new("live")).unwrap_err();
+        assert!(matches!(
+            error,
+            AppError::ConfigInvalid {
+                field: "state.dir",
+                ..
+            }
+        ));
     }
 
     #[test]

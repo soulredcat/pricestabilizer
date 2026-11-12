@@ -7,7 +7,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::app::error::AppError;
-use crate::app::file_naming::feed_file_name;
+use crate::app::files::feed_file_name;
 use crate::state::engine_state::{EngineState, STATE_VERSION};
 
 /// One state file per feed inside the state directory.

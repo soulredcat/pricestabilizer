@@ -1,0 +1,85 @@
+# Live configuration template. A connector for your market appends snapshots
+# to /data/snapshots.jsonl (the engine follows that file) and is started by
+# the engine as its venue. It starts READ-ONLY: send_orders = false.
+#
+# Before sending real orders: calibrate every threshold on recorded data,
+# shadow-run on live data (paper venue or send_orders = false), then pilot
+# with a small fraction of the capital. See README "Going live".
+#
+# Check it: pricestabilizer check-config config/live.example.toml
+
+[growth]
+initial_price = 1.0             # auditable reference price of your token
+weekly_growth = 0.01            # benchmark line only, never a buy order
+start_timestamp = 1767225600
+
+[price]
+twap_window_secs = 3600
+max_sample_gap_secs = 900
+min_quote_depth = 5000.0
+min_window_quote_volume = 100.0
+max_spot_twap_deviation = 0.05
+depth_reference_move = 0.02
+
+[regime]
+window_secs = 86400
+trend_threshold = 0.03
+high_daily_volatility = 0.10
+extreme_move = 0.15
+quote_peg_usd = 1.0
+depeg_threshold = 0.02
+max_depth_drop = 0.5
+
+[liquidity]
+range_sigmas = 2.0
+range_horizon_days = 1.0
+min_half_width = 0.02
+max_half_width = 0.25
+width_tolerance = 0.3
+min_reposition_interval_secs = 3600
+band_capital_share = 0.45
+rebalance_tolerance = 0.02
+
+[assets]
+token_decimals = 18
+quote_decimals = 6
+
+[risk]
+max_swap_quote = 500.0
+max_slippage = 0.005
+min_quote_reserve = 1500.0
+max_token_exposure_quote = 9000.0
+max_daily_loss_quote = 300.0
+max_drawdown = 0.10
+max_consecutive_failures = 3
+order_ttl_secs = 60
+max_price_drift = 0.005
+max_swap_shortfall = 0.015
+max_action_cost_quote = 2.0
+
+[venue]
+kind = "external"
+command = ["/connector/run"]
+timeout_secs = 30
+send_orders = false             # kill switch: flip only after a shadow run
+
+[treasury]
+budget_quote = 1000.0
+proposal_quote = 100.0
+min_proposal_interval_secs = 86400
+proposal_ttl_secs = 21600
+
+[feed]
+source = "follow"
+path = "/data/snapshots.jsonl"
+max_snapshot_age_secs = 120
+poll_millis = 500
+
+[operator]
+commands_path = "/data/commands.jsonl"
+
+[state]
+dir = "/data/state"
+
+[report]
+ledger_dir = "/data/ledger"

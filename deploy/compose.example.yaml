@@ -1,0 +1,17 @@
+# Compose template for one engine. Copy to the bot's folder as compose.yaml,
+# with config/engine.toml (start from config/live.example.toml) and an empty
+# data/ folder beside it, then: docker compose up -d
+#
+# data/ keeps everything that must survive restarts: the state directory,
+# the ledger journal, the operator command file and the snapshot file the
+# connector appends to. Back it up.
+
+services:
+  engine:
+    image: pricestabilizer:latest     # docker build -t pricestabilizer <repo>
+    restart: unless-stopped
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+    command: ["/config/engine.toml"]
+    stop_grace_period: 30s

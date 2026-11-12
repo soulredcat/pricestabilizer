@@ -52,7 +52,7 @@ fn from_reader(
     }
 }
 
-fn parse_line(
+pub fn parse_line(
     path: &Path,
     line_number: usize,
     line: io::Result<String>,

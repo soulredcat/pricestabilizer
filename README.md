@@ -8,11 +8,13 @@ latched protection mode when something abnormal happens. It never knows which
 chain or venue it is running on. Everything chain-specific lives in a connector
 outside this repository that turns its market into generic snapshots.
 
-> **Status: v0.3, paper trading and connector protocol.** Decisions are
-> executed through a risk gate against a venue, with a double-entry ledger
-> reconciled every snapshot. The repository ships a paper venue and a
-> chain-agnostic connector protocol; no chain connector ships here. Every
-> threshold in the example config is an uncalibrated starting point.
+> **Status: v0.4, ready for shadow runs.** Decisions are executed through a
+> risk gate against a venue, every order carries a guard (minimum out,
+> deadline, price drift, cost cap, idempotency key), the double-entry ledger
+> is reconciled every snapshot, and all safety state survives restarts. The
+> repository ships a paper venue and a chain-agnostic connector protocol; no
+> chain connector ships here. Every threshold in the example configs is an
+> uncalibrated starting point.
 
 ## Principles
 
@@ -66,10 +68,11 @@ src/
 │   ├── mode/                    operating modes and the latching controller
 │   ├── liquidity/               price band, liquidity intents, band keeper
 │   └── strategy/                tick decision, execution feedback, pipeline
-├── execution/                   band funding, risk gate, booking, executor
+├── execution/                   order runner, guards, fill checks, risk gate, band mover, executor
 ├── treasury/                    accumulation proposals and the treasury desk
 ├── operator/                    operator commands and the followed command file
 ├── portfolio/                   asset units, holdings, double-entry ledger, PnL
+├── state/                       what survives a restart, and its atomic file
 ├── venue/
 │   ├── adapter.rs               the Venue trait every market implements
 │   ├── order.rs                 orders, fills, wallets, venue errors
@@ -82,9 +85,11 @@ src/
 
 ```bash
 cargo run --release -- config/simulation.example.toml
+cargo run --release -- check-config config/live.example.toml   # validate only
+cargo run --release -- --version
 ```
 
-The example config replays ten stress scenarios (steady bull and bear,
+The simulation config replays ten stress scenarios (steady bull and bear,
 sideways, flash crash, pump and retrace, low liquidity, liquidity exit and
 inflow, stablecoin depeg, data gap), each on a fresh engine, and prints one
 summary per scenario.
@@ -96,12 +101,23 @@ same lines in live:
 
 ```toml
 [feed]
-source = "jsonl"        # or: source = "stdin"
+source = "jsonl"        # a recorded file, read to its end
 path = "snapshots.jsonl"
 ```
 
+Live, either pipe the lines in, or let a connector append them to a file
+the engine follows (the natural setup with containers):
+
+```toml
+[feed]
+source = "follow"       # or "stdin" (without path and poll_millis)
+path = "/data/snapshots.jsonl"
+max_snapshot_age_secs = 120
+poll_millis = 500
+```
+
 ```bash
-my-connector --snapshots | pricestabilizer live.toml
+my-connector --snapshots | pricestabilizer live.toml   # with source = "stdin"
 ```
 
 One snapshot per line. Extra fields are ignored, so connectors may attach
@@ -111,8 +127,11 @@ their own metadata:
 {"timestamp": 1767225600, "spot_price": 1.0, "quote_depth": 50000.0, "quote_volume": 210.5, "quote_usd_price": 1.0}
 ```
 
-Timestamps must strictly increase. Prices must be positive and depth and
-volume non-negative, or the run stops with the offending line.
+Timestamps must strictly increase, prices must be positive, and depth and
+volume non-negative. A line that breaks these rules, or does not parse, is
+reported on stderr, counted under `skipped` in the summary and never acted
+on; the engine keeps running. Live feeds also skip snapshots further than
+`max_snapshot_age_secs` from the wall clock.
 
 ## Writing a venue connector
 
@@ -223,6 +242,49 @@ With `[report] ledger_dir`, every ledger entry is appended to a JSON-lines
 journal as soon as it is booked; a resumed session appends to the same
 journal.
 
+## Running with Docker
+
+```bash
+docker build -t pricestabilizer .
+docker run --rm -v "$PWD/config:/config:ro" pricestabilizer check-config /config/engine.toml
+```
+
+`deploy/compose.example.yaml` runs one engine with `restart: unless-stopped`,
+the config mounted read-only at `/config` and a `data/` volume at `/data`
+for the state directory, the ledger journal, the operator command file and
+the snapshot file a connector appends to. Start from
+`config/live.example.toml`. The image carries no venue connector: build
+your own image `FROM pricestabilizer`, add the connector, and point
+`[venue] command` at it.
+
+## Going live
+
+Run these stages in order and move on only when the previous one is clean.
+
+1. **Calibrate.** Record the target market's snapshots and tune every
+   threshold (see below). Keep only changes that also win out of sample.
+2. **Connector.** Implement the protocol and honour every guard: enforce
+   `min_received` with the venue's own minimum-out protection, refuse late
+   or drifted orders, answer repeated `order_id`s from memory, and prefer a
+   private submission route where the chain offers one. The hot wallet
+   holds only operational funds; the treasury wallet is controlled
+   separately; token allowances are exact and short-lived, never unlimited.
+3. **Read-only.** Run with `send_orders = false` and a state directory.
+   Check that balances reconcile, that the event log makes sense and that
+   withheld orders are the ones you expect.
+4. **Shadow.** Paper-trade on live data (the paper venue with a live feed)
+   for several days, including at least one volatile day.
+5. **Pilot.** `send_orders = true` with a small fraction of the capital and
+   limits tighter than the final ones. Watch the event log and the journal
+   daily; back up `data/`.
+6. **Scale** only after the pilot's books, fees and costs match
+   expectations.
+
+Never: trade between wallets the project controls, place orders meant to
+be cancelled, or trade to move a reported price. Disclose the market-making
+arrangement and the buyback policy, and keep the ledger journal (it is the
+audit trail).
+
 ## Roadmap
 
 1. ~~Inventory and ledger in integer base units.~~ Done.
@@ -231,7 +293,9 @@ journal.
 4. ~~Treasury budget and accumulation proposals behind operator approval.~~ Done.
 5. ~~Venue connector protocol with a reference paper connector.~~ Done.
 6. ~~Operator controls: pause, resume, approve, reject.~~ Done.
-7. Calibrate every threshold on recorded market data, then shadow-run
+7. ~~Order guards, persistent state, reconciliation, kill switch, live
+   follow feed, container image.~~ Done.
+8. Calibrate every threshold on recorded market data, then shadow-run
    against a testnet connector before any pilot.
 
 ## Calibrating on recorded data

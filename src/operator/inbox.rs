@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::app::error::AppError;
+use crate::app::files::open_or_create;
 use crate::operator::command::{OperatorCommand, ScheduledCommand};
 
 #[derive(Default)]
@@ -27,7 +28,7 @@ impl CommandInbox {
         let Some(path) = path else {
             return Ok(Self::default());
         };
-        let file = File::open(path).map_err(|source| AppError::FeedRead {
+        let file = open_or_create(path).map_err(|source| AppError::FeedRead {
             path: path.to_path_buf(),
             source,
         })?;

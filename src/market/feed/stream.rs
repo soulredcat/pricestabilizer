@@ -1,9 +1,11 @@
 //! Opens the configured feeds as boxed snapshot streams.
 
+use std::time::Duration;
+
 use crate::app::error::AppError;
 use crate::config::feed_section::FeedConfig;
-use crate::market::feed::jsonl;
 use crate::market::feed::scenario::generator;
+use crate::market::feed::{follow, jsonl};
 use crate::market::snapshot::MarketSnapshot;
 
 pub type SnapshotStream = Box<dyn Iterator<Item = Result<MarketSnapshot, AppError>>>;
@@ -25,5 +27,10 @@ pub fn open_feeds(config: &FeedConfig) -> Result<Vec<MarketFeed>, AppError> {
             .collect()),
         FeedConfig::Jsonl(settings) => Ok(vec![jsonl::open(&settings.path)?]),
         FeedConfig::Stdin(settings) => Ok(vec![jsonl::stdin(settings.max_snapshot_age_secs)]),
+        FeedConfig::Follow(settings) => Ok(vec![follow::follow(
+            &settings.path,
+            Duration::from_millis(settings.poll_millis),
+            settings.max_snapshot_age_secs,
+        )?]),
     }
 }

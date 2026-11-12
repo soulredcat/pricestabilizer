@@ -15,6 +15,19 @@ pub enum FeedConfig {
     Jsonl(JsonlFeedConfig),
     /// The same format piped in live on standard input.
     Stdin(StdinFeedConfig),
+    /// The same format appended live to a file by another process or
+    /// container, read as it grows.
+    Follow(FollowFeedConfig),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FollowFeedConfig {
+    pub path: PathBuf,
+    /// Snapshots further than this from the wall clock are skipped.
+    pub max_snapshot_age_secs: u64,
+    /// How often to look for new lines.
+    pub poll_millis: u64,
 }
 
 #[derive(Debug, Deserialize)]
