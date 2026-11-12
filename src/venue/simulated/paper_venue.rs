@@ -111,9 +111,16 @@ impl PaperVenue {
             self.scale.to_amount(Asset::Quote, quote_units),
         );
         let (token, quote) = band_math::amounts_per_liquidity(band, price);
+        // The f64 curve may land a few units above what was offered.
         let used = Holding {
-            token: self.scale.to_units(Asset::Token, token * liquidity),
-            quote: self.scale.to_units(Asset::Quote, quote * liquidity),
+            token: self
+                .scale
+                .to_units(Asset::Token, token * liquidity)
+                .min(token_units),
+            quote: self
+                .scale
+                .to_units(Asset::Quote, quote * liquidity)
+                .min(quote_units),
         };
         let action_cost = self.action_cost();
         let fill = Fill {

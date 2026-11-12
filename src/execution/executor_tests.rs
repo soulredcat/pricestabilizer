@@ -1,6 +1,8 @@
 //! Executor behaviour against a paper venue and a venue that always fails.
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::config::engine_config::EngineConfig;
 use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
@@ -74,6 +76,77 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     assert_eq!(labels.first(), Some(&"remove_band"));
     assert_eq!(labels.last(), Some(&"add_band"));
     assert_eq!(moved.feedback.alert, None, "ledger and venue agree");
+}
+
+/// Fixed wallets; every order is recorded and filled as a no-op.
+struct RecordingVenue {
+    wallet: Holding,
+    orders: Rc<RefCell<Vec<VenueOrder>>>,
+}
+
+impl Venue for RecordingVenue {
+    fn observe(&mut self, _: &MarketSnapshot) -> Result<(), VenueError> {
+        Ok(())
+    }
+
+    fn execute(&mut self, order: &VenueOrder, _: &MarketSnapshot) -> Result<Fill, VenueError> {
+        self.orders.borrow_mut().push(*order);
+        Ok(Fill::default())
+    }
+
+    fn balances(&mut self, _: Wallet) -> Result<Holding, VenueError> {
+        Ok(self.wallet)
+    }
+
+    fn position(&mut self, _: &MarketSnapshot) -> Result<Option<PositionView>, VenueError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn orders_never_ask_for_more_units_than_the_wallet_holds() {
+    // Seen on recorded data: an 18-decimal wallet built by earlier fills does
+    // not survive an f64 round trip, and a token-limited deposit asked for
+    // about a million units more than the wallet held.
+    let text = EXAMPLE.replace("token_decimals = 9", "token_decimals = 18");
+    let config = EngineConfig::parse(&text, Path::new("eighteen")).expect("valid config");
+    let wallet = Holding {
+        token: 13_184_104_334_791_636_156_416,
+        quote: 9_550_501_143,
+    };
+    let orders = Rc::new(RefCell::new(Vec::new()));
+    let venue = RecordingVenue {
+        wallet,
+        orders: Rc::clone(&orders),
+    };
+    let mut executor = Executor::open(&config, Box::new(venue)).expect("opens");
+    let band = PriceBand {
+        lower: 0.037_735_865_780_957_32,
+        upper: 0.056_065_437_887_358_93,
+    };
+    executor.on_decision(
+        &market(1, 0.045_775_623_848_488_815),
+        LiquidityAction::Open(band),
+        None,
+    );
+    let recorded = orders.borrow();
+    assert!(
+        recorded
+            .iter()
+            .any(|order| matches!(order, VenueOrder::AddBand { .. }))
+    );
+    for order in recorded.iter() {
+        let within = match *order {
+            VenueOrder::Swap { sell, units, .. } => units <= wallet.get(sell),
+            VenueOrder::AddBand {
+                token_units,
+                quote_units,
+                ..
+            } => token_units <= wallet.token && quote_units <= wallet.quote,
+            VenueOrder::RemoveBand => true,
+        };
+        assert!(within, "{order:?} exceeds {wallet:?}");
+    }
 }
 
 #[test]

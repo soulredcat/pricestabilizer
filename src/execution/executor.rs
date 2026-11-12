@@ -15,6 +15,7 @@ use crate::execution::outcome::{ExecutionOutcome, OrderResult};
 use crate::execution::risk_gate::{OrderContext, RiskGate};
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::asset::{Asset, UnitScale};
+use crate::portfolio::holding::Holding;
 use crate::portfolio::ledger::{Account, Ledger};
 use crate::portfolio::pnl_tracker::{BooksSnapshot, PnlTracker};
 use crate::venue::adapter::Venue;
@@ -123,7 +124,7 @@ impl Executor {
             Err(error) => return self.fail(error, outcome),
         }
         let price = market.spot_price;
-        let Some(wallet) = self.operational_amounts(outcome) else {
+        let Some((holding, wallet)) = self.operational_wallet(outcome) else {
             return;
         };
         let target =
@@ -131,7 +132,7 @@ impl Executor {
         if let Some((sell, amount)) =
             band_funding::rebalance_swap(target, wallet, price, &self.liquidity, &self.risk)
         {
-            let units = self.scale.to_units(sell, amount);
+            let units = self.scale.to_units(sell, amount).min(holding.get(sell));
             let swap = VenueOrder::Swap {
                 wallet: Wallet::Operational,
                 sell,
@@ -141,14 +142,22 @@ impl Executor {
                 return;
             }
         }
-        let Some(wallet) = self.operational_amounts(outcome) else {
+        let Some((holding, wallet)) = self.operational_wallet(outcome) else {
             return;
         };
         let funded = band_funding::deposit(target, wallet, self.risk.min_quote_reserve);
+        // Base units of 18-decimal assets do not survive an f64 round trip;
+        // never ask for more than the wallet holds.
         let add = VenueOrder::AddBand {
             band,
-            token_units: self.scale.to_units(Asset::Token, funded.token),
-            quote_units: self.scale.to_units(Asset::Quote, funded.quote),
+            token_units: self
+                .scale
+                .to_units(Asset::Token, funded.token)
+                .min(holding.token),
+            quote_units: self
+                .scale
+                .to_units(Asset::Quote, funded.quote)
+                .min(holding.quote),
         };
         self.run(add, market, outcome);
     }
@@ -219,9 +228,10 @@ impl Executor {
         })
     }
 
-    fn operational_amounts(&mut self, outcome: &mut ExecutionOutcome) -> Option<Amounts> {
+    /// The operational wallet in base units and as human amounts.
+    fn operational_wallet(&mut self, outcome: &mut ExecutionOutcome) -> Option<(Holding, Amounts)> {
         match self.venue.balances(Wallet::Operational) {
-            Ok(holding) => Some(Amounts::from_holding(holding, self.scale)),
+            Ok(holding) => Some((holding, Amounts::from_holding(holding, self.scale))),
             Err(error) => {
                 self.fail(error, outcome);
                 None

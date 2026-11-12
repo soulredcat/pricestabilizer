@@ -188,6 +188,20 @@ their `at` time.
 7. Calibrate every threshold on recorded market data, then shadow-run
    against a testnet connector before any pilot.
 
+## Calibrating on recorded data
+
+Thresholds belong to a market, not to the engine. Record that market's
+snapshots, then for each candidate configuration:
+
+1. Replay it and compare equity with the `hold` benchmark the report prints.
+2. Re-run the best candidates on data they were not chosen on (another
+   period, the other half of the record, and the built-in stress scenarios).
+3. Keep a change only when it wins out of sample too. A parameter that wins
+   on one path, such as a single pump and retrace, is luck, not an edge.
+
+Keep recordings, sweeps and market-specific configs out of this repository
+(the git-ignored `local/` folder exists for that).
+
 ## Repository rules
 
 - Rust only. Everything in the repository is written in English.
