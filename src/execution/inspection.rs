@@ -11,6 +11,8 @@ use crate::venue::order::Wallet;
 pub struct Inspection {
     pub books: BooksSnapshot,
     pub band_held: bool,
+    /// The token's share of operational value, wallet and band together.
+    pub token_share: Option<f64>,
     pub reconciled: bool,
     pub loss_breached: bool,
 }
@@ -35,6 +37,12 @@ pub fn inspect(
             position.unclaimed_fees,
         )
     });
+    let operational_amounts = Amounts::from_holding(operational, runner.scale());
+    let (band_token, band_quote) =
+        position.map_or((0.0, 0.0), |position| (position.token, position.quote));
+    let token_value = (operational_amounts.token + band_token) * valuation_price;
+    let operational_value = token_value + operational_amounts.quote + band_quote;
+    let token_share = (operational_value > 0.0).then(|| token_value / operational_value);
     let wallets = Amounts::from_holding(operational.plus(treasury), runner.scale());
     let equity = wallets.value(valuation_price) + band_value + unclaimed;
     let loss_breached = pnl.mark(market.timestamp, equity);
@@ -46,6 +54,7 @@ pub fn inspect(
             runner.totals(),
         ),
         band_held: position.is_some(),
+        token_share,
         reconciled: runner.reconciled(operational, treasury),
         loss_breached,
     })

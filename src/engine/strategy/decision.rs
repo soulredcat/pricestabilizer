@@ -14,4 +14,8 @@ pub struct TickDecision {
     pub liquidity: LiquidityAction,
     /// Whether spot sits inside the current band; `None` before any band exists.
     pub spot_in_band: Option<bool>,
+    /// Expected fees against the loss to arbitrage; `None` while undefined.
+    pub fee_to_lvr: Option<f64>,
+    /// Share of operational value a new band may use.
+    pub capital_share: f64,
 }

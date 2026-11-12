@@ -39,6 +39,10 @@ width_tolerance = 0.3
 min_reposition_interval_secs = 3600
 band_capital_share = 0.45       # ~4,000 of ~9,000 operational value
 rebalance_tolerance = 0.02
+high_volatility_capital_share = 0.25   # less capital at risk when volatility is high
+pool_fee_rate = 0.003           # fee LPs earn on the venue
+min_fee_to_lvr = 0.0            # 0 = report only; e.g. 1.0 = no band unless fees cover arbitrage
+inventory_skew = 0.0            # experimental, 0..1: lift the band when token-heavy (see README)
 
 [assets]
 token_decimals = 9

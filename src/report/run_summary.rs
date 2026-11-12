@@ -45,6 +45,10 @@ pub struct RunSummary {
     pub events: Counter,
     /// Refused input by reason; none of it was acted on.
     pub skipped: Counter,
+    /// Ticks where fee/LVR was defined, its sum, and ticks where it was >= 1.
+    pub fee_to_lvr_ticks: u64,
+    pub fee_to_lvr_sum: f64,
+    pub fee_to_lvr_covered: u64,
     pub treasury_spent: f64,
 }
 
@@ -98,6 +102,11 @@ impl RunSummary {
                 after_secs: self.elapsed_secs,
                 cause: cause.label(),
             });
+        }
+        if let Some(ratio) = decision.fee_to_lvr {
+            self.fee_to_lvr_ticks += 1;
+            self.fee_to_lvr_sum += ratio;
+            self.fee_to_lvr_covered += u64::from(ratio >= 1.0);
         }
         for order in &outcome.orders {
             bump(&mut self.orders, order.label());

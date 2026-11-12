@@ -36,6 +36,7 @@ pub fn request(
 ) -> ExecutionRequest {
     ExecutionRequest {
         action,
+        capital_share: 0.45,
         treasury_buy_quote,
         valuation_price: price,
     }

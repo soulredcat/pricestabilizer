@@ -245,3 +245,12 @@ fn paper_trading_resumes_after_a_restart_without_a_mismatch() {
     assert_eq!(second.ticks, 30);
     assert_eq!(second.protection.map(|trip| trip.cause), None);
 }
+
+#[test]
+fn an_unprofitable_market_gets_no_band_when_the_gate_is_on() {
+    let gated = EXAMPLE.replace("min_fee_to_lvr = 0.0", "min_fee_to_lvr = 1000.0");
+    let summary = run_with(&gated, "sideways");
+    assert!(summary.latest_band.is_none());
+    assert!(summary.liquidity.contains_key("hold_unprofitable"));
+    assert!(summary.fee_to_lvr_ticks > 0);
+}

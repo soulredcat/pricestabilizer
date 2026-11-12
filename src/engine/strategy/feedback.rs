@@ -8,4 +8,6 @@ pub struct ExecutionFeedback {
     pub alert: Option<EmergencyCause>,
     /// Whether a band position is actually live at the venue.
     pub band_held: bool,
+    /// The token's share of operational inventory value (wallet and band).
+    pub token_share: Option<f64>,
 }

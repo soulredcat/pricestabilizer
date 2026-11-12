@@ -37,6 +37,7 @@ pub fn render(summary: &RunSummary) -> String {
     lines.push(format!("  band         {}", band_line(summary)));
     lines.push(format!("  orders       {}", counts(&summary.orders)));
     lines.push(format!("  books        {}", books_line(summary)));
+    lines.push(format!("  economics    {}", economics_line(summary)));
     lines.push(format!(
         "  events       {}; treasury spent {:.2}",
         counts(&summary.events),
@@ -98,6 +99,18 @@ fn books_line(summary: &RunSummary) -> String {
             percent(books.worst_drawdown),
         ),
     }
+}
+
+fn economics_line(summary: &RunSummary) -> String {
+    if summary.fee_to_lvr_ticks == 0 {
+        return "fee/LVR undefined".to_owned();
+    }
+    let ticks = summary.fee_to_lvr_ticks as f64;
+    format!(
+        "fee/LVR mean {:.2}, fees covered arbitrage on {:.1}% of ticks",
+        summary.fee_to_lvr_sum / ticks,
+        summary.fee_to_lvr_covered as f64 / ticks * 100.0
+    )
 }
 
 fn protection_line(summary: &RunSummary) -> String {

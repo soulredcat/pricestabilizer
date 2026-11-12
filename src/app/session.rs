@@ -134,6 +134,7 @@ impl TradingSession {
         );
         let request = ExecutionRequest {
             action: decision.liquidity,
+            capital_share: decision.capital_share,
             treasury_buy_quote: buy.map(|proposal| proposal.quote),
             valuation_price: decision.price.twap,
         };

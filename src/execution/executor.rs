@@ -100,6 +100,7 @@ impl Executor {
             move_band(
                 &mut self.runner,
                 band,
+                request.capital_share,
                 market,
                 &self.liquidity,
                 &self.risk,
@@ -125,6 +126,7 @@ impl Executor {
         if let Some(inspection) = inspection {
             outcome.books = Some(inspection.books);
             outcome.feedback.band_held = inspection.band_held;
+            outcome.feedback.token_share = inspection.token_share;
         }
         outcome.feedback.alert = self.alert(reconciled, loss_breached);
         outcome

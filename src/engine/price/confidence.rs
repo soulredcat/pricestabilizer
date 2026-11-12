@@ -32,6 +32,8 @@ impl PriceIssue {
 #[derive(Debug, Clone)]
 pub struct PriceAssessment {
     pub twap: f64,
+    /// Quote volume per day, extrapolated from the TWAP window.
+    pub daily_volume: f64,
     pub issues: Vec<PriceIssue>,
 }
 

@@ -40,6 +40,10 @@ width_tolerance = 0.3
 min_reposition_interval_secs = 3600
 band_capital_share = 0.45
 rebalance_tolerance = 0.02
+high_volatility_capital_share = 0.25
+pool_fee_rate = 0.003
+min_fee_to_lvr = 0.0
+inventory_skew = 0.0
 
 [assets]
 token_decimals = 18

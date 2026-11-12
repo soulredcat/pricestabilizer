@@ -102,6 +102,10 @@ mod tests {
             min_reposition_interval_secs: 0,
             band_capital_share: 0.5,
             rebalance_tolerance: 0.01,
+            high_volatility_capital_share: 0.25,
+            pool_fee_rate: 0.003,
+            min_fee_to_lvr: 0.0,
+            inventory_skew: 0.0,
         }
     }
 

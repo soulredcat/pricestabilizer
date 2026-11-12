@@ -7,9 +7,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::engine_config::EngineConfig;
+use crate::config::engine_sections::LiquidityConfig;
 use crate::engine::growth::target_curve::TargetCurve;
 use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
 use crate::engine::liquidity::band_keeper::{BandKeeper, BandKeeperState};
+use crate::engine::liquidity::economics;
 use crate::engine::mode::controller::ModeController;
 use crate::engine::mode::operating_mode::OperatingMode;
 use crate::engine::price::assessor::PriceAssessor;
@@ -35,6 +37,8 @@ pub struct StrategyPipeline {
     mode: ModeController,
     band: BandKeeper,
     last_regime: Option<Regime>,
+    liquidity: LiquidityConfig,
+    depth_reference_move: f64,
 }
 
 impl StrategyPipeline {
@@ -46,6 +50,8 @@ impl StrategyPipeline {
             mode: ModeController::default(),
             band: BandKeeper::new(&config.liquidity),
             last_regime: None,
+            liquidity: config.liquidity.clone(),
+            depth_reference_move: config.price.depth_reference_move,
         }
     }
 
@@ -92,11 +98,30 @@ impl StrategyPipeline {
         let mode = self
             .mode
             .update(regime.regime, below_target, feedback.alert);
-        let liquidity = self.liquidity_action(snapshot.timestamp, &price, regime, mode);
+        let fee_to_lvr = economics::fee_to_lvr(
+            self.liquidity.pool_fee_rate,
+            price.daily_volume,
+            snapshot.quote_depth,
+            self.depth_reference_move,
+            regime.daily_volatility,
+        );
+        let liquidity = self.liquidity_action(
+            snapshot.timestamp,
+            &price,
+            regime,
+            mode,
+            fee_to_lvr,
+            feedback.token_share,
+        );
         let spot_in_band = self
             .band
             .current()
             .map(|band| band.contains(snapshot.spot_price));
+        let capital_share = if regime.regime == Regime::HighVolatility {
+            self.liquidity.high_volatility_capital_share
+        } else {
+            self.liquidity.band_capital_share
+        };
         TickDecision {
             target_price,
             price,
@@ -104,24 +129,33 @@ impl StrategyPipeline {
             mode,
             liquidity,
             spot_in_band,
+            fee_to_lvr,
+            capital_share,
         }
     }
 
+    /// Holds through protection and untrusted prices, and, when the gate is
+    /// on, while expected fees do not cover the loss to arbitrage.
     fn liquidity_action(
         &mut self,
         timestamp: u64,
         price: &PriceAssessment,
         regime: RegimeReading,
         mode: OperatingMode,
+        fee_to_lvr: Option<f64>,
+        token_share: Option<f64>,
     ) -> LiquidityAction {
         if matches!(mode, OperatingMode::Protection(_)) {
             return LiquidityAction::Hold(HoldReason::Protection);
         }
-        match price.reference_price() {
-            Some(reference) => self
-                .band
-                .plan(timestamp, reference, regime.daily_volatility),
-            None => LiquidityAction::Hold(HoldReason::UntrustedPrice),
+        let Some(reference) = price.reference_price() else {
+            return LiquidityAction::Hold(HoldReason::UntrustedPrice);
+        };
+        let gate = self.liquidity.min_fee_to_lvr;
+        if gate > 0.0 && fee_to_lvr.is_some_and(|ratio| ratio < gate) {
+            return LiquidityAction::Hold(HoldReason::Unprofitable);
         }
+        self.band
+            .plan(timestamp, reference, regime.daily_volatility, token_share)
     }
 }

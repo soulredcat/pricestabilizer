@@ -201,6 +201,44 @@ protocol. A real connector must answer the same calls the same way:
 pricestabilizer paper-connector config/simulation.example.toml
 ```
 
+## Stabilization options
+
+All in `[liquidity]` unless noted. Defaults in the example configs are
+starting points; calibrate them per market.
+
+| option | effect |
+|---|---|
+| `range_sigmas`, `range_horizon_days`, `min_half_width`, `max_half_width` | band width follows realised volatility: tight when calm, wide when wild |
+| `band_capital_share` | share of operational value placed in the band; it grows with the capital actually held |
+| `high_volatility_capital_share` | smaller share while the regime is high volatility |
+| `width_tolerance`, `min_reposition_interval_secs` | hysteresis and cooldown against repositioning churn |
+| `rebalance_tolerance` | inventory gaps below this share of the band are not worth a swap |
+| `inventory_skew` (experimental) | lifts the band when token-heavy (the excess sells as price rises) and lowers it when quote-heavy |
+| `pool_fee_rate`, `min_fee_to_lvr` | economic gate: no new band while expected fees fall below this multiple of the loss to arbitrage |
+| `[risk]`, `[regime]` | loss limits, exposure, reserve, depeg, extreme-move and depth-collapse protection |
+| `[treasury]` | operator-approved accumulation only |
+
+**What a band costs.** While the price is in range, arbitrage takes
+`σ² · L · √p / 4` per day from a band of liquidity `L` (loss-versus-
+rebalancing), and the band earns roughly `fee · volume · (its depth / pool
+depth)`. Their ratio does not depend on the band's width or size:
+
+```text
+fees / LVR = 4 · fee · daily volume · (1 − 1/√(1 + m)) / (depth · σ²)
+```
+
+with `m` the feed's depth reference move. Every run reports it as
+`economics`: below 1, providing liquidity costs the project money, and that
+cost is the price of the depth it adds. In the built-in scenarios
+(turnover about 1.2× depth per day, 3–4% daily volatility) it sits at
+0.1–0.2, which matches the negative results against holding. Markets with
+high turnover relative to depth come out far better.
+
+**Measured, not assumed.** On the built-in scenarios `inventory_skew = 0.5`
+cut swap costs where the price came back (pump and retrace) but did slightly
+worse than no skew in steady trends, so it ships off. Change a default only
+when it also wins out of sample.
+
 ## Operator commands
 
 Set `[operator] commands_path` to a JSON-lines file. The engine follows it

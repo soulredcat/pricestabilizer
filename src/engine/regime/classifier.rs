@@ -109,6 +109,7 @@ mod tests {
     fn trusted() -> PriceAssessment {
         PriceAssessment {
             twap: 1.0,
+            daily_volume: 0.0,
             issues: vec![],
         }
     }
@@ -126,6 +127,7 @@ mod tests {
         let mut classifier = classifier();
         let untrusted = PriceAssessment {
             twap: 1.0,
+            daily_volume: 0.0,
             issues: vec![PriceIssue::ThinDepth],
         };
         let reading = classifier.classify(&snapshot(0, 1.0, 0.95), &untrusted);

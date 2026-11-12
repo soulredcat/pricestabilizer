@@ -22,6 +22,8 @@ pub enum HoldReason {
     InBand,
     /// A band change happened too recently.
     Cooldown,
+    /// Expected fees do not cover the loss to arbitrage.
+    Unprofitable,
 }
 
 impl LiquidityAction {
@@ -31,6 +33,7 @@ impl LiquidityAction {
             Self::Hold(HoldReason::UntrustedPrice) => "hold_untrusted_price",
             Self::Hold(HoldReason::InBand) => "hold_in_band",
             Self::Hold(HoldReason::Cooldown) => "hold_cooldown",
+            Self::Hold(HoldReason::Unprofitable) => "hold_unprofitable",
             Self::Open(_) => "open",
             Self::Reposition(_) => "reposition",
         }

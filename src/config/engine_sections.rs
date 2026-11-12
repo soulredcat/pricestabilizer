@@ -79,4 +79,16 @@ pub struct LiquidityConfig {
     /// Inventory gaps smaller than this share of the band budget are not
     /// worth a rebalancing swap.
     pub rebalance_tolerance: f64,
+    /// Capital share used while the regime is high volatility (wider bands
+    /// with less capital at risk).
+    pub high_volatility_capital_share: f64,
+    /// Fee liquidity providers earn on the venue (0.003 = 0.3%).
+    pub pool_fee_rate: f64,
+    /// No new band or reposition while expected fees fall below this
+    /// multiple of the loss to arbitrage (LVR); 0 turns the gate off. The
+    /// ratio is always reported.
+    pub min_fee_to_lvr: f64,
+    /// Shift of the band centre toward selling excess inventory, as a share
+    /// of the half-width at full imbalance (0 = no skew, below 1).
+    pub inventory_skew: f64,
 }

@@ -61,6 +61,7 @@ impl PriceAssessor {
         ];
         PriceAssessment {
             twap,
+            daily_volume: self.twap.quote_volume() * 86_400.0 / self.config.twap_window_secs as f64,
             issues: checks
                 .into_iter()
                 .filter_map(|(failed, issue)| failed.then_some(issue))

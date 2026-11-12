@@ -14,6 +14,7 @@ use crate::venue::order::{VenueOrder, Wallet};
 pub fn move_band(
     runner: &mut OrderRunner,
     band: PriceBand,
+    capital_share: f64,
     market: &MarketSnapshot,
     liquidity: &LiquidityConfig,
     risk: &RiskConfig,
@@ -36,7 +37,7 @@ pub fn move_band(
         return;
     };
     let wallet = Amounts::from_holding(holding, scale);
-    let target = band_funding::band_target(band, price, wallet, liquidity.band_capital_share);
+    let target = band_funding::band_target(band, price, wallet, capital_share);
     if let Some((sell, amount)) =
         band_funding::rebalance_swap(target, wallet, price, liquidity, risk)
     {

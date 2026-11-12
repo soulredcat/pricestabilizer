@@ -2,7 +2,7 @@
 
 use crate::app::error::AppError;
 use crate::config::engine_sections::{GrowthConfig, LiquidityConfig, PriceConfig, RegimeConfig};
-use crate::config::validation::rules::{check, fraction, non_negative, nonzero, positive};
+use crate::config::validation::rules::{check, fraction, non_negative, nonzero, positive, rate};
 
 pub fn check_growth(growth: &GrowthConfig) -> Result<(), AppError> {
     positive("growth.initial_price", growth.initial_price)?;
@@ -50,5 +50,17 @@ pub fn check_liquidity(liquidity: &LiquidityConfig) -> Result<(), AppError> {
     fraction(
         "liquidity.rebalance_tolerance",
         liquidity.rebalance_tolerance,
-    )
+    )?;
+    fraction(
+        "liquidity.high_volatility_capital_share",
+        liquidity.high_volatility_capital_share,
+    )?;
+    check(
+        liquidity.high_volatility_capital_share <= liquidity.band_capital_share,
+        "liquidity.high_volatility_capital_share",
+        "must not exceed liquidity.band_capital_share",
+    )?;
+    rate("liquidity.pool_fee_rate", liquidity.pool_fee_rate)?;
+    non_negative("liquidity.min_fee_to_lvr", liquidity.min_fee_to_lvr)?;
+    rate("liquidity.inventory_skew", liquidity.inventory_skew)
 }
