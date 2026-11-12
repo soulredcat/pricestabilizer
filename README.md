@@ -31,7 +31,8 @@ outside this repository that turns its market into generic snapshots.
   decisions use, and only when trusted) and target (the benchmark) are never
   mixed.
 - **Protection latches.** A stablecoin depeg, an extreme single move, a depth
-  collapse, a loss limit, a ledger/venue mismatch or repeated venue failures
+  collapse, a loss limit, a ledger/venue mismatch, repeated venue failures,
+  a fill that does not match its order, or more orders in a day than allowed
   trips protection, and only an operator may resume.
 - **Integer books.** The ledger is double-entry in integer base units with
   configurable decimals, and it is reconciled with the venue every snapshot.
@@ -185,6 +186,13 @@ failures trip protection. Every fill is checked against its order, and a
 fill that does not match (for example less than `min_received`) trips
 protection as an `execution_anomaly`. Connectors must log to stderr: stdout
 carries only protocol lines.
+
+Swaps that rebalance the band are anchored to spot; treasury buys are
+anchored to the TWAP, so their `min_received` and `max_price_drift` refuse a
+buy into a spike that the TWAP has not confirmed. The engine calls `observe`
+on every snapshot: on venues with resting orders (order books), a connector
+should cancel them when no call has arrived for a few snapshot intervals
+(a dead-man switch), so a stopped engine never leaves stale quotes behind.
 
 The binary contains a reference connector, the paper venue served over this
 protocol. A real connector must answer the same calls the same way:

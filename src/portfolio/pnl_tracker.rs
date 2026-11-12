@@ -144,6 +144,7 @@ mod tests {
             max_price_drift: 0.01,
             max_swap_shortfall: 0.02,
             max_action_cost_quote: 1.0,
+            max_orders_per_day: 100,
         })
     }
 

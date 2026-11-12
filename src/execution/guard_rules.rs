@@ -33,14 +33,15 @@ impl GuardRules {
         self.next_order_id = self.next_order_id.max(next_order_id);
     }
 
-    /// A fresh guard: a new order id, a deadline and the planning price.
-    pub fn next_guard(&mut self, market: &MarketSnapshot) -> OrderGuard {
+    /// A fresh guard: a new order id, a deadline and the price the order is
+    /// anchored to.
+    pub fn next_guard(&mut self, market: &MarketSnapshot, reference_price: f64) -> OrderGuard {
         let order_id = self.next_order_id;
         self.next_order_id += 1;
         OrderGuard {
             order_id,
             deadline: market.timestamp + self.ttl_secs,
-            reference_price: market.spot_price,
+            reference_price,
             max_price_drift: self.max_price_drift,
             max_action_cost: self.max_action_cost,
         }
@@ -81,6 +82,7 @@ mod tests {
             max_price_drift: 0.01,
             max_swap_shortfall: 0.02,
             max_action_cost_quote: 0.5,
+            max_orders_per_day: 100,
         };
         GuardRules::new(&risk, UnitScale::new(6, 6))
     }
@@ -95,8 +97,8 @@ mod tests {
             quote_volume: 1.0,
             quote_usd_price: 1.0,
         };
-        let first = rules.next_guard(&market);
-        let second = rules.next_guard(&market);
+        let first = rules.next_guard(&market, 2.0);
+        let second = rules.next_guard(&market, 2.0);
         assert_eq!((first.order_id, second.order_id), (1, 2));
         assert_eq!(first.deadline, 1_060);
         assert_eq!(first.max_action_cost, 500_000);

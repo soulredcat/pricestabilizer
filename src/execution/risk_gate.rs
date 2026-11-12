@@ -12,6 +12,8 @@ pub enum RiskBreach {
     SlippageTooHigh,
     ReserveTooLow,
     TokenExposureTooHigh,
+    /// Today's order limit is reached.
+    DailyOrderLimit,
 }
 
 impl RiskBreach {
@@ -21,6 +23,7 @@ impl RiskBreach {
             Self::SlippageTooHigh => "blocked_slippage_too_high",
             Self::ReserveTooLow => "blocked_reserve_too_low",
             Self::TokenExposureTooHigh => "blocked_token_exposure_too_high",
+            Self::DailyOrderLimit => "blocked_daily_order_limit",
         }
     }
 }
@@ -129,6 +132,7 @@ mod tests {
             max_price_drift: 0.01,
             max_swap_shortfall: 0.02,
             max_action_cost_quote: 1.0,
+            max_orders_per_day: 100,
         };
         RiskGate::new(&limits, UnitScale::new(0, 0), 0.02)
     }

@@ -42,7 +42,14 @@ pub fn move_band(
     {
         let units = scale.to_units(sell, amount).min(holding.get(sell));
         if runner
-            .swap(Wallet::Operational, sell, units, market, outcome)
+            .swap(
+                Wallet::Operational,
+                sell,
+                units,
+                market,
+                market.spot_price,
+                outcome,
+            )
             .is_none()
         {
             return;

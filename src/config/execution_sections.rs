@@ -39,4 +39,7 @@ pub struct RiskConfig {
     pub max_swap_shortfall: f64,
     /// The most one order may pay in network costs, in quote.
     pub max_action_cost_quote: f64,
+    /// Orders per UTC day before protection trips (withdrawals excepted):
+    /// a runaway loop stops instead of draining fees and capital.
+    pub max_orders_per_day: u32,
 }

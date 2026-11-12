@@ -1,9 +1,9 @@
 //! Sends single orders: risk gate first, then the venue, then the ledger.
 //! It owns the venue and the books, so every fill is booked exactly once,
-//! checked against its order, and every venue failure is counted.
+//! checked against its order, and every venue failure is counted. What of
+//! it survives a restart lives in `persistence`.
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+pub mod persistence;
 
 use crate::config::engine_config::EngineConfig;
 use crate::config::venue_section::VenueConfig;
@@ -11,11 +11,11 @@ use crate::execution::booking;
 use crate::execution::fill_check;
 use crate::execution::guard_rules::GuardRules;
 use crate::execution::outcome::{ExecutionOutcome, OrderResult};
-use crate::execution::risk_gate::{OrderContext, RiskGate};
+use crate::execution::risk_gate::{OrderContext, RiskBreach, RiskGate};
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::asset::{Asset, UnitScale};
 use crate::portfolio::holding::Holding;
-use crate::portfolio::ledger::{Account, BalanceRow, Ledger};
+use crate::portfolio::ledger::{Account, Ledger};
 use crate::portfolio::pnl_tracker::FillTotals;
 use crate::venue::adapter::Venue;
 use crate::venue::order::{Fill, PositionView, VenueError, VenueOrder, Wallet};
@@ -32,21 +32,12 @@ pub struct OrderRunner {
     ledger_broken: bool,
     /// A venue answered with a fill that does not match its order.
     anomaly: bool,
+    max_orders_per_day: u32,
+    /// UTC day and orders sent on it.
+    orders_today: Option<(u64, u32)>,
+    /// The daily order limit was hit: a runaway loop until proven otherwise.
+    order_burst: bool,
     totals: FillTotals,
-}
-
-/// What of the runner survives a restart: order numbering, alerts not yet
-/// acknowledged, fee and cost totals, and the ledger balances.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunnerState {
-    pub next_order_id: u64,
-    pub consecutive_failures: u32,
-    pub ledger_broken: bool,
-    pub anomaly: bool,
-    pub totals: FillTotals,
-    pub balances: Vec<BalanceRow>,
-    /// The venue's own state, for venues that keep any (the paper venue).
-    pub venue: Option<Value>,
 }
 
 impl OrderRunner {
@@ -68,25 +59,6 @@ impl OrderRunner {
         ))
     }
 
-    /// Picks up a saved runner. No deposits are booked: the next
-    /// reconciliation compares the saved ledger with what the venue holds.
-    pub fn restore(
-        config: &EngineConfig,
-        mut venue: Box<dyn Venue>,
-        state: RunnerState,
-    ) -> Result<Self, VenueError> {
-        if let Some(saved) = state.venue {
-            venue.restore_state(saved)?;
-        }
-        let mut runner = Self::assemble(config, venue, Ledger::from_balances(&state.balances));
-        runner.guards.resume_from(state.next_order_id);
-        runner.consecutive_failures = state.consecutive_failures;
-        runner.ledger_broken = state.ledger_broken;
-        runner.anomaly = state.anomaly;
-        runner.totals = state.totals;
-        Ok(runner)
-    }
-
     fn assemble(config: &EngineConfig, venue: Box<dyn Venue>, ledger: Ledger) -> Self {
         let scale = UnitScale::new(config.assets.token_decimals, config.assets.quote_decimals);
         let send_orders = match &config.venue {
@@ -103,33 +75,11 @@ impl OrderRunner {
             consecutive_failures: 0,
             ledger_broken: false,
             anomaly: false,
+            max_orders_per_day: config.risk.max_orders_per_day,
+            orders_today: None,
+            order_burst: false,
             totals: FillTotals::default(),
         }
-    }
-
-    pub fn state(&self) -> RunnerState {
-        RunnerState {
-            next_order_id: self.guards.next_order_id(),
-            consecutive_failures: self.consecutive_failures,
-            ledger_broken: self.ledger_broken,
-            anomaly: self.anomaly,
-            totals: self.totals,
-            balances: self.ledger.balances(),
-            venue: self.venue.saved_state(),
-        }
-    }
-
-    /// Adopts the venue's wallets in the ledger: the operator's answer to a
-    /// mismatch caused by transfers made outside the engine.
-    pub fn reconcile(&mut self, timestamp: u64) -> Result<(), VenueError> {
-        let operational = self.venue.balances(Wallet::Operational)?;
-        let treasury = self.venue.balances(Wallet::Treasury)?;
-        self.ledger
-            .adjust_to(timestamp, Account::Operational, operational);
-        self.ledger
-            .adjust_to(timestamp, Account::Treasury, treasury);
-        self.ledger_broken = false;
-        Ok(())
     }
 
     pub fn scale(&self) -> UnitScale {
@@ -156,10 +106,16 @@ impl OrderRunner {
         self.anomaly
     }
 
-    /// An operator looked: past failures and anomalies are acknowledged.
+    pub fn order_burst(&self) -> bool {
+        self.order_burst
+    }
+
+    /// An operator looked: past failures, anomalies and an order burst are
+    /// acknowledged. Today's order count stays: the limit still applies.
     pub fn acknowledge(&mut self) {
         self.consecutive_failures = 0;
         self.anomaly = false;
+        self.order_burst = false;
     }
 
     pub fn observe(&mut self, market: &MarketSnapshot, outcome: &mut ExecutionOutcome) {
@@ -187,32 +143,46 @@ impl OrderRunner {
             .map_err(|error| self.fail(error, outcome))
     }
 
-    /// Swaps `units` of `sell` at market with a minimum out derived from spot.
+    /// Swaps `units` of `sell` at market. Its minimum out and allowed price
+    /// drift are anchored to `reference_price`: spot for rebalancing, the
+    /// TWAP for treasury buys, so a buy into a manipulated spike is refused.
     pub fn swap(
         &mut self,
         wallet: Wallet,
         sell: Asset,
         units: u128,
         market: &MarketSnapshot,
+        reference_price: f64,
         outcome: &mut ExecutionOutcome,
     ) -> Option<Fill> {
         let min_received = self
             .guards
-            .min_received(self.scale, sell, units, market.spot_price);
+            .min_received(self.scale, sell, units, reference_price);
         let order = VenueOrder::Swap {
             wallet,
             sell,
             units,
             min_received,
         };
-        self.run(order, market, outcome)
+        self.run_at(order, market, reference_price, outcome)
     }
 
-    /// Gate, guard, execute and book one order; the fill when it went through.
+    /// Gate, guard, execute and book one order planned at spot; the fill
+    /// when it went through.
     pub fn run(
         &mut self,
         order: VenueOrder,
         market: &MarketSnapshot,
+        outcome: &mut ExecutionOutcome,
+    ) -> Option<Fill> {
+        self.run_at(order, market, market.spot_price, outcome)
+    }
+
+    fn run_at(
+        &mut self,
+        order: VenueOrder,
+        market: &MarketSnapshot,
+        reference_price: f64,
         outcome: &mut ExecutionOutcome,
     ) -> Option<Fill> {
         let context = match self.order_context(market) {
@@ -232,7 +202,14 @@ impl OrderRunner {
                 .push(OrderResult::Withheld(order.withheld_label()));
             return None;
         }
-        let guard = self.guards.next_guard(market);
+        if !self.count_against_daily_limit(&order, market.timestamp) {
+            self.order_burst = true;
+            outcome
+                .orders
+                .push(OrderResult::Blocked(RiskBreach::DailyOrderLimit));
+            return None;
+        }
+        let guard = self.guards.next_guard(market, reference_price);
         match self.venue.execute(&order, &guard, market) {
             Ok(fill) => {
                 self.consecutive_failures = 0;
@@ -255,6 +232,21 @@ impl OrderRunner {
                 None
             }
         }
+    }
+
+    /// Counts an order against today's limit; `false` when the limit is
+    /// reached. Withdrawals are never limited: they only reduce risk.
+    fn count_against_daily_limit(&mut self, order: &VenueOrder, timestamp: u64) -> bool {
+        let day = timestamp / 86_400;
+        let sent = match self.orders_today {
+            Some((today, sent)) if today == day => sent,
+            _ => 0,
+        };
+        let allowed = matches!(order, VenueOrder::RemoveBand) || sent < self.max_orders_per_day;
+        if allowed {
+            self.orders_today = Some((day, sent + 1));
+        }
+        allowed
     }
 
     pub fn fail(&mut self, error: VenueError, outcome: &mut ExecutionOutcome) {

@@ -47,7 +47,11 @@ pub fn check_risk(risk: &RiskConfig) -> Result<(), AppError> {
         "risk.max_swap_shortfall",
         "must exceed risk.max_slippage, or gated swaps would be refused",
     )?;
-    non_negative("risk.max_action_cost_quote", risk.max_action_cost_quote)
+    non_negative("risk.max_action_cost_quote", risk.max_action_cost_quote)?;
+    nonzero(
+        "risk.max_orders_per_day",
+        u64::from(risk.max_orders_per_day),
+    )
 }
 
 pub fn check_venue(venue: &VenueConfig) -> Result<(), AppError> {

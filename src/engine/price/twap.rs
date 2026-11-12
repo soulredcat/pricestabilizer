@@ -58,6 +58,10 @@ impl TwapWindow {
         }
     }
 
+    pub fn sample_count(&self) -> usize {
+        self.samples.len()
+    }
+
     pub fn quote_volume(&self) -> f64 {
         self.samples.iter().map(|sample| sample.quote_volume).sum()
     }

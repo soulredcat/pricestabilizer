@@ -54,6 +54,10 @@ impl PriceAssessor {
                 (snapshot.spot_price - twap).abs() / twap > self.config.max_spot_twap_deviation,
                 PriceIssue::SpotTwapDivergence,
             ),
+            (
+                self.twap.sample_count() < self.config.min_twap_samples,
+                PriceIssue::SparseData,
+            ),
         ];
         PriceAssessment {
             twap,
@@ -80,6 +84,7 @@ mod tests {
             min_window_quote_volume: 5.0,
             max_spot_twap_deviation: 0.05,
             depth_reference_move: 0.02,
+            min_twap_samples: 3,
         })
     }
 

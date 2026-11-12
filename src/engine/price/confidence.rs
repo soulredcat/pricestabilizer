@@ -12,6 +12,8 @@ pub enum PriceIssue {
     LowVolume,
     /// Spot has run away from the TWAP.
     SpotTwapDivergence,
+    /// Too few snapshots in the TWAP window.
+    SparseData,
 }
 
 impl PriceIssue {
@@ -22,6 +24,7 @@ impl PriceIssue {
             Self::ThinDepth => "thin_depth",
             Self::LowVolume => "low_volume",
             Self::SpotTwapDivergence => "spot_twap_divergence",
+            Self::SparseData => "sparse_data",
         }
     }
 }

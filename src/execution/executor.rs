@@ -13,7 +13,8 @@ use crate::engine::regime::market_regime::EmergencyCause;
 use crate::execution::band_funding::Amounts;
 use crate::execution::band_mover::move_band;
 use crate::execution::inspection::inspect;
-use crate::execution::order_runner::{OrderRunner, RunnerState};
+use crate::execution::order_runner::OrderRunner;
+use crate::execution::order_runner::persistence::RunnerState;
 use crate::execution::outcome::ExecutionOutcome;
 use crate::execution::request::ExecutionRequest;
 use crate::market::snapshot::MarketSnapshot;
@@ -106,7 +107,8 @@ impl Executor {
             );
         }
         if let Some(quote) = request.treasury_buy_quote {
-            outcome.treasury_spent = self.treasury_buy(quote, market, &mut outcome);
+            outcome.treasury_spent =
+                self.treasury_buy(quote, market, request.valuation_price, &mut outcome);
         }
         let inspection = inspect(
             &mut self.runner,
@@ -135,20 +137,21 @@ impl Executor {
         self.runner.acknowledge();
     }
 
-    /// Buys with treasury quote, never more than the treasury wallet holds;
-    /// returns the quote actually spent.
+    /// Buys with treasury quote, never more than the treasury wallet holds,
+    /// anchored to the TWAP; returns the quote actually spent.
     fn treasury_buy(
         &mut self,
         quote: f64,
         market: &MarketSnapshot,
+        twap: f64,
         outcome: &mut ExecutionOutcome,
     ) -> Option<f64> {
         let scale = self.runner.scale();
         let held = self.runner.balances(Wallet::Treasury, outcome)?;
         let units = scale.to_units(Asset::Quote, quote).min(held.quote);
-        let fill = self
-            .runner
-            .swap(Wallet::Treasury, Asset::Quote, units, market, outcome)?;
+        let fill =
+            self.runner
+                .swap(Wallet::Treasury, Asset::Quote, units, market, twap, outcome)?;
         let spent = fill.spent.quote.saturating_sub(fill.action_cost);
         Some(scale.to_amount(Asset::Quote, spent))
     }
@@ -158,6 +161,8 @@ impl Executor {
             Some(EmergencyCause::LedgerMismatch)
         } else if self.runner.anomaly() {
             Some(EmergencyCause::ExecutionAnomaly)
+        } else if self.runner.order_burst() {
+            Some(EmergencyCause::OrderBurst)
         } else if self.runner.consecutive_failures() >= self.risk.max_consecutive_failures {
             Some(EmergencyCause::VenueFailures)
         } else if loss_breached {

@@ -21,7 +21,8 @@ pub fn check_price(price: &PriceConfig) -> Result<(), AppError> {
         "price.max_spot_twap_deviation",
         price.max_spot_twap_deviation,
     )?;
-    fraction("price.depth_reference_move", price.depth_reference_move)
+    fraction("price.depth_reference_move", price.depth_reference_move)?;
+    nonzero("price.min_twap_samples", price.min_twap_samples as u64)
 }
 
 pub fn check_regime(regime: &RegimeConfig) -> Result<(), AppError> {

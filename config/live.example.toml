@@ -20,6 +20,7 @@ min_quote_depth = 5000.0
 min_window_quote_volume = 100.0
 max_spot_twap_deviation = 0.05
 depth_reference_move = 0.02
+min_twap_samples = 6           # a window with fewer prints is not trusted
 
 [regime]
 window_secs = 86400
@@ -56,6 +57,7 @@ order_ttl_secs = 60
 max_price_drift = 0.005
 max_swap_shortfall = 0.015
 max_action_cost_quote = 2.0
+max_orders_per_day = 24
 
 [venue]
 kind = "external"

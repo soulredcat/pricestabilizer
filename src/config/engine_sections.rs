@@ -29,6 +29,9 @@ pub struct PriceConfig {
     pub min_window_quote_volume: f64,
     /// Maximum relative gap between spot and TWAP.
     pub max_spot_twap_deviation: f64,
+    /// Fewest snapshots the TWAP window must hold: a window spanning its
+    /// full length with only a couple of prints is easy to manipulate.
+    pub min_twap_samples: usize,
     /// Feed convention: `quote_depth` is the quote liquidity that moves the
     /// price by this fraction (0.02 = depth within a 2% move).
     pub depth_reference_move: f64,
