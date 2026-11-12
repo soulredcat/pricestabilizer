@@ -24,6 +24,15 @@ impl GuardRules {
         }
     }
 
+    pub fn next_order_id(&self) -> u64 {
+        self.next_order_id
+    }
+
+    /// Continues numbering after a restart, so no order id is ever reused.
+    pub fn resume_from(&mut self, next_order_id: u64) {
+        self.next_order_id = self.next_order_id.max(next_order_id);
+    }
+
     /// A fresh guard: a new order id, a deadline and the planning price.
     pub fn next_guard(&mut self, market: &MarketSnapshot) -> OrderGuard {
         let order_id = self.next_order_id;

@@ -1,5 +1,9 @@
 //! One trading session over one feed: operator commands, decision,
-//! treasury, execution, and feedback into the next snapshot.
+//! treasury, execution, and feedback into the next snapshot. With a state
+//! directory, the session resumes where it stopped and saves after every
+//! snapshot.
+
+use std::path::PathBuf;
 
 use crate::app::error::AppError;
 use crate::config::engine_config::EngineConfig;
@@ -15,6 +19,8 @@ use crate::market::snapshot::MarketSnapshot;
 use crate::operator::command::{OperatorCommand, OperatorEvent};
 use crate::operator::inbox::CommandInbox;
 use crate::portfolio::ledger::Ledger;
+use crate::state::engine_state::{EngineState, STATE_VERSION};
+use crate::state::state_file;
 use crate::treasury::desk::TreasuryDesk;
 use crate::treasury::proposal::TreasuryEvent;
 use crate::venue::venue_factory::open_venue;
@@ -50,24 +56,55 @@ pub struct TradingSession {
     inbox: CommandInbox,
     feedback: ExecutionFeedback,
     protected: bool,
+    state_path: Option<PathBuf>,
+    resumed_at: Option<u64>,
 }
 
 impl TradingSession {
     pub fn open(config: &EngineConfig, feed_name: &str) -> Result<Self, AppError> {
+        let state_path = config
+            .state
+            .dir
+            .as_deref()
+            .map(|directory| state_file::path_for(directory, feed_name));
+        let saved = match &state_path {
+            Some(path) => state_file::load(path)?,
+            None => None,
+        };
         let executor = open_venue(config)
-            .and_then(|venue| Executor::open(config, venue))
+            .and_then(|venue| {
+                Executor::open(
+                    config,
+                    venue,
+                    saved.as_ref().map(|state| state.execution.clone()),
+                )
+            })
             .map_err(|error| AppError::VenueUnavailable {
                 feed: feed_name.to_owned(),
                 reason: error.label(),
             })?;
+        let mut pipeline = StrategyPipeline::new(config);
+        let mut treasury = TreasuryDesk::new(&config.treasury);
+        if let Some(state) = &saved {
+            pipeline.restore(state.pipeline);
+            treasury.restore(state.treasury);
+        }
+        let consumed = saved.as_ref().map_or(0, |state| state.commands_consumed);
         Ok(Self {
-            pipeline: StrategyPipeline::new(config),
+            pipeline,
             executor,
-            treasury: TreasuryDesk::new(&config.treasury),
-            inbox: CommandInbox::open(config.operator.commands_path.as_deref())?,
+            treasury,
+            inbox: CommandInbox::open(config.operator.commands_path.as_deref(), consumed)?,
             feedback: ExecutionFeedback::default(),
             protected: false,
+            state_path,
+            resumed_at: saved.map(|state| state.saved_at),
         })
+    }
+
+    /// The last snapshot handled before a restart; older ones are refused.
+    pub fn resumed_at(&self) -> Option<u64> {
+        self.resumed_at
     }
 
     pub fn ledger(&self) -> &Ledger {
@@ -77,7 +114,7 @@ impl TradingSession {
     pub fn step(&mut self, snapshot: &MarketSnapshot) -> Result<TickReport, AppError> {
         let mut events = Vec::new();
         for command in self.inbox.due(snapshot.timestamp)? {
-            self.apply(command, &mut events);
+            self.apply(command, snapshot.timestamp, &mut events);
         }
         let decision = self.pipeline.on_snapshot(snapshot, self.feedback);
         let protection = match decision.mode {
@@ -107,6 +144,7 @@ impl TradingSession {
         }
         events.extend(treasury_events.into_iter().map(TickEvent::Treasury));
         self.feedback = outcome.feedback;
+        self.save(snapshot.timestamp)?;
         Ok(TickReport {
             decision,
             outcome,
@@ -114,7 +152,22 @@ impl TradingSession {
         })
     }
 
-    fn apply(&mut self, command: OperatorCommand, events: &mut Vec<TickEvent>) {
+    fn save(&self, timestamp: u64) -> Result<(), AppError> {
+        let Some(path) = &self.state_path else {
+            return Ok(());
+        };
+        let state = EngineState {
+            version: STATE_VERSION,
+            saved_at: timestamp,
+            pipeline: self.pipeline.state(),
+            execution: self.executor.state(),
+            treasury: self.treasury.state(),
+            commands_consumed: self.inbox.consumed(),
+        };
+        state_file::save(path, &state)
+    }
+
+    fn apply(&mut self, command: OperatorCommand, timestamp: u64, events: &mut Vec<TickEvent>) {
         let event = match command {
             OperatorCommand::Pause => {
                 self.pipeline.pause();
@@ -126,6 +179,10 @@ impl TradingSession {
                 TickEvent::Operator(OperatorEvent::Resumed)
             }
             OperatorCommand::Resume => TickEvent::Operator(OperatorEvent::ResumeRefused),
+            OperatorCommand::Reconcile if self.executor.reconcile(timestamp) => {
+                TickEvent::Operator(OperatorEvent::Reconciled)
+            }
+            OperatorCommand::Reconcile => TickEvent::Operator(OperatorEvent::ReconcileFailed),
             OperatorCommand::Approve { proposal } => match self.treasury.approve(proposal) {
                 Some(event) => TickEvent::Treasury(event),
                 None => return,

@@ -2,6 +2,8 @@
 //! for an operator's approval, and executes only while it is still safe:
 //! never in protection and never without a trusted price.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::treasury_section::TreasuryConfig;
 use crate::engine::mode::operating_mode::OperatingMode;
 use crate::treasury::proposal::{Proposal, TreasuryEvent};
@@ -15,6 +17,18 @@ pub struct TreasuryDesk {
     approved: bool,
 }
 
+/// The budget spent and proposal numbering survive a restart: a restart
+/// never refills the budget, and an old approval never matches a new
+/// proposal.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TreasuryState {
+    pub spent: f64,
+    pub next_id: u64,
+    pub last_proposal_at: Option<u64>,
+    pub pending: Option<Proposal>,
+    pub approved: bool,
+}
+
 impl TreasuryDesk {
     pub fn new(config: &TreasuryConfig) -> Self {
         Self {
@@ -25,6 +39,24 @@ impl TreasuryDesk {
             pending: None,
             approved: false,
         }
+    }
+
+    pub fn state(&self) -> TreasuryState {
+        TreasuryState {
+            spent: self.spent,
+            next_id: self.next_id,
+            last_proposal_at: self.last_proposal_at,
+            pending: self.pending,
+            approved: self.approved,
+        }
+    }
+
+    pub fn restore(&mut self, state: TreasuryState) {
+        self.spent = state.spent;
+        self.next_id = state.next_id;
+        self.last_proposal_at = state.last_proposal_at;
+        self.pending = state.pending;
+        self.approved = state.approved;
     }
 
     pub fn approve(&mut self, id: u64) -> Option<TreasuryEvent> {

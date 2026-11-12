@@ -10,6 +10,7 @@ use crate::config::engine_sections::{GrowthConfig, LiquidityConfig, PriceConfig,
 use crate::config::execution_sections::{AssetsConfig, RiskConfig};
 use crate::config::feed_section::FeedConfig;
 use crate::config::report_section::ReportConfig;
+use crate::config::state_section::StateConfig;
 use crate::config::treasury_section::{OperatorConfig, TreasuryConfig};
 use crate::config::venue_section::VenueConfig;
 
@@ -29,6 +30,8 @@ pub struct EngineConfig {
     pub operator: OperatorConfig,
     #[serde(default)]
     pub report: ReportConfig,
+    #[serde(default)]
+    pub state: StateConfig,
 }
 
 impl EngineConfig {

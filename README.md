@@ -185,16 +185,43 @@ their `at` time.
 {"at": 1767398400, "command": "resume"}
 {"at": 1767229300, "command": "approve", "proposal": 1}
 {"at": 1767229300, "command": "reject", "proposal": 2}
+{"at": 1767400000, "command": "reconcile"}
 ```
 
 - `pause` latches protection at once.
 - `resume` leaves protection only if the market is no longer in an
   emergency; it acknowledges losses so far (the drawdown peak and daily
   baseline restart). A broken ledger is never cleared by a resume.
+- `reconcile` adopts the venue's wallet balances in the ledger after
+  transfers made outside the engine (a `ledger_mismatch` stops trading until
+  then); send `resume` afterwards.
+- Lines that do not parse are reported on stderr and skipped.
 - Treasury proposals are announced on stderr, for example
   `[feed @ 1767229200] treasury_proposed #1`. Only an `approve` naming that
   number lets the treasury buy, and only while the price is trusted and the
   engine is not in protection. Unapproved proposals expire.
+
+## State and restarts
+
+```toml
+[state]
+dir = "state"           # one <feed>.state.json per feed, saved every snapshot
+```
+
+The state file keeps everything a restart must not reset: a latched
+protection, the drawdown peak and the day's opening equity, ledger balances,
+order numbering, the treasury budget spent and its proposal numbers, how far
+the operator command file was read, and the paper venue's wallets. It is
+written atomically after every snapshot, so the process can be killed at
+any moment. On restart, snapshots up to the last one handled are refused,
+commands already applied are never applied again, and price windows warm up
+afresh before anything is traded. A state file that exists but cannot be
+read stops the engine instead of starting fresh. It is required when an
+external venue sends orders.
+
+With `[report] ledger_dir`, every ledger entry is appended to a JSON-lines
+journal as soon as it is booked; a resumed session appends to the same
+journal.
 
 ## Roadmap
 

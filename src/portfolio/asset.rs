@@ -56,6 +56,21 @@ pub fn serialize_units<S: Serializer>(units: &u128, serializer: S) -> Result<S::
     serializer.collect_str(units)
 }
 
+/// Signed balances (the capital account goes negative), as a string too.
+pub fn serialize_signed_units<S: Serializer>(
+    units: &i128,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(units)
+}
+
+pub fn deserialize_signed_units<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<i128, D::Error> {
+    let text = String::deserialize(deserializer)?;
+    text.parse().map_err(serde::de::Error::custom)
+}
+
 /// Reads base units written by [`serialize_units`]: a decimal string.
 pub fn deserialize_units<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
     let text = String::deserialize(deserializer)?;

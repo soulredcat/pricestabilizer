@@ -152,3 +152,96 @@ fn report_names_the_feed_protection_and_books() {
     assert!(rendered.contains("latched after"));
     assert!(rendered.contains("equity"));
 }
+
+/// A recorded feed, an operator command file and a state directory, all
+/// fresh, wired into the example config.
+fn restartable_config(name: &str, commands: &str) -> (String, std::path::PathBuf) {
+    let directory = std::env::temp_dir().join(format!("pricestabilizer-restart-{name}"));
+    std::fs::remove_dir_all(&directory).ok();
+    std::fs::create_dir_all(&directory).expect("temp dir is writable");
+    let feed = directory.join("feed.jsonl");
+    let commands_path = directory.join("commands.jsonl");
+    std::fs::write(&commands_path, commands).expect("writable");
+    let start = EXAMPLE.find("[feed]").expect("feed section");
+    let end = EXAMPLE.find("[report]").expect("report section");
+    let text = format!(
+        "{}[feed]\nsource = \"jsonl\"\npath = {:?}\n\n[operator]\ncommands_path = {:?}\n\n[state]\ndir = {:?}\n",
+        &EXAMPLE[..start],
+        feed.display().to_string(),
+        commands_path.display().to_string(),
+        directory.join("state").display().to_string(),
+    ) + &EXAMPLE[end..].replace("ledger_dir = \"target/ledgers\"", "");
+    (text, feed)
+}
+
+fn write_snapshots(feed: &std::path::Path, count: u64) {
+    let lines: String = (0..count)
+        .map(|step| {
+            format!(
+                "{{\"timestamp\": {}, \"spot_price\": 1.0, \"quote_depth\": 50000.0, \"quote_volume\": 200.0, \"quote_usd_price\": 1.0}}\n",
+                START + step * 300
+            )
+        })
+        .collect();
+    std::fs::write(feed, lines).expect("writable");
+}
+
+fn replay_file(config_text: &str) -> Result<RunSummary, crate::app::error::AppError> {
+    let config = EngineConfig::parse(config_text, Path::new("restart")).expect("valid config");
+    let feed = open_feeds(&config.feed)?.pop().expect("one feed");
+    replay(&config, feed).map(|(summary, _)| summary)
+}
+
+#[test]
+fn protection_and_consumed_commands_survive_a_restart() {
+    let pause = format!(r#"{{"at": {}, "command": "pause"}}"#, START + 5 * 300) + "\n";
+    let (text, feed) = restartable_config("latch", &pause);
+    write_snapshots(&feed, 20);
+    let first = replay_file(&text).expect("first run");
+    assert_eq!(
+        first.protection.map(|trip| trip.cause),
+        Some("operator_pause")
+    );
+
+    // The feed grows and the engine restarts on the same state.
+    write_snapshots(&feed, 40);
+    let second = replay_file(&text).expect("second run");
+    assert_eq!(second.ticks, 20, "already handled snapshots are refused");
+    assert_eq!(second.skipped.get("out_of_order"), Some(&20));
+    assert_eq!(
+        second.events.get("operator_pause"),
+        None,
+        "never applied twice"
+    );
+    assert_eq!(
+        second.modes.get("protection"),
+        Some(&20),
+        "the latch survived"
+    );
+}
+
+#[test]
+fn an_unreadable_state_file_refuses_to_start() {
+    let (text, feed) = restartable_config("corrupt", "");
+    write_snapshots(&feed, 3);
+    let state_dir = feed.parent().expect("directory").join("state");
+    std::fs::create_dir_all(&state_dir).expect("writable");
+    let state_file = crate::state::state_file::path_for(&state_dir, &feed.display().to_string());
+    std::fs::write(&state_file, "{ torn").expect("writable");
+    assert!(matches!(
+        replay_file(&text),
+        Err(crate::app::error::AppError::StateParse { .. })
+    ));
+}
+
+#[test]
+fn paper_trading_resumes_after_a_restart_without_a_mismatch() {
+    let (text, feed) = restartable_config("paper", "");
+    write_snapshots(&feed, 30);
+    let first = replay_file(&text).expect("first run");
+    assert!(first.orders.contains_key("add_band"), "a band was opened");
+    write_snapshots(&feed, 60);
+    let second = replay_file(&text).expect("second run");
+    assert_eq!(second.ticks, 30);
+    assert_eq!(second.protection.map(|trip| trip.cause), None);
+}

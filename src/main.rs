@@ -12,6 +12,7 @@ mod market;
 mod operator;
 mod portfolio;
 mod report;
+mod state;
 mod treasury;
 mod venue;
 

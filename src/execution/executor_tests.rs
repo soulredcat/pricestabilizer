@@ -76,7 +76,8 @@ impl Venue for BrokenVenue {
 #[test]
 fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
+    let mut executor =
+        Executor::open(&config, open_venue(&config).expect("venue"), None).expect("opens");
     let open = executor.on_decision(
         &market(1, 1.0),
         &request(
@@ -148,7 +149,7 @@ fn orders_never_ask_for_more_units_than_the_wallet_holds() {
         wallet,
         orders: Rc::clone(&orders),
     };
-    let mut executor = Executor::open(&config, Box::new(venue)).expect("opens");
+    let mut executor = Executor::open(&config, Box::new(venue), None).expect("opens");
     let band = PriceBand {
         lower: 0.037_735_865_780_957_32,
         upper: 0.056_065_437_887_358_93,
@@ -180,7 +181,8 @@ fn orders_never_ask_for_more_units_than_the_wallet_holds() {
 #[test]
 fn holding_places_no_orders() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
+    let mut executor =
+        Executor::open(&config, open_venue(&config).expect("venue"), None).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
         &request(LiquidityAction::Hold(HoldReason::InBand), None, 1.0),
@@ -192,7 +194,8 @@ fn holding_places_no_orders() {
 #[test]
 fn approved_treasury_buy_spends_treasury_quote_only() {
     let config = config();
-    let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
+    let mut executor =
+        Executor::open(&config, open_venue(&config).expect("venue"), None).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
         &request(LiquidityAction::Hold(HoldReason::InBand), Some(250.0), 1.0),
@@ -213,7 +216,7 @@ fn approved_treasury_buy_spends_treasury_quote_only() {
 #[test]
 fn repeated_venue_failures_raise_an_alert() {
     let config = config();
-    let mut executor = Executor::open(&config, Box::new(BrokenVenue)).expect("opens");
+    let mut executor = Executor::open(&config, Box::new(BrokenVenue), None).expect("opens");
     let open = LiquidityAction::Open(PriceBand::around(1.0, 0.05));
     let alerts: Vec<_> = (0..3)
         .map(|tick| {
@@ -250,7 +253,7 @@ fn kill_switch_withholds_every_order() {
         wallet: token_short_wallet(),
         orders: Rc::clone(&orders),
     };
-    let mut executor = Executor::open(&dry_run_config(), Box::new(venue)).expect("opens");
+    let mut executor = Executor::open(&dry_run_config(), Box::new(venue), None).expect("opens");
     let open = LiquidityAction::Open(PriceBand::around(1.0, 0.05));
     let outcome = executor.on_decision(&market(1, 1.0), &request(open, Some(100.0), 1.0));
     let labels: Vec<_> = outcome.orders.iter().map(|order| order.label()).collect();
@@ -267,7 +270,7 @@ fn a_fill_that_does_not_match_its_order_trips_protection() {
         wallet: token_short_wallet(),
         orders: Rc::new(RefCell::new(Vec::new())),
     };
-    let mut executor = Executor::open(&config(), Box::new(venue)).expect("opens");
+    let mut executor = Executor::open(&config(), Box::new(venue), None).expect("opens");
     let open = LiquidityAction::Open(PriceBand::around(1.0, 0.05));
     let outcome = executor.on_decision(&market(1, 1.0), &request(open, None, 1.0));
     assert_eq!(

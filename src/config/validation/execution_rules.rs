@@ -3,6 +3,7 @@
 use crate::app::error::AppError;
 use crate::config::execution_sections::{AssetsConfig, RiskConfig};
 use crate::config::feed_section::FeedConfig;
+use crate::config::state_section::StateConfig;
 use crate::config::treasury_section::TreasuryConfig;
 use crate::config::validation::rules::{check, fraction, non_negative, nonzero, positive, rate};
 use crate::config::venue_section::VenueConfig;
@@ -69,6 +70,17 @@ pub fn check_venue(venue: &VenueConfig) -> Result<(), AppError> {
             nonzero("venue.timeout_secs", settings.timeout_secs)
         }
     }
+}
+
+/// A venue that really sends orders must not lose its latch, limits or
+/// budget on a restart.
+pub fn check_state(state: &StateConfig, venue: &VenueConfig) -> Result<(), AppError> {
+    let sends_orders = matches!(venue, VenueConfig::External(settings) if settings.send_orders);
+    check(
+        !sends_orders || state.dir.is_some(),
+        "state.dir",
+        "is required when an external venue sends orders",
+    )
 }
 
 pub fn check_treasury(treasury: &TreasuryConfig) -> Result<(), AppError> {

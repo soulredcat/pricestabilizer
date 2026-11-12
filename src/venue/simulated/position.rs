@@ -1,9 +1,12 @@
 //! A band position inside the paper venue.
 
+use serde::{Deserialize, Serialize};
+
 use crate::engine::liquidity::band_math;
 use crate::engine::liquidity::price_band::PriceBand;
 use crate::market::snapshot::MarketSnapshot;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PaperPosition {
     pub band: PriceBand,
     pub liquidity: f64,

@@ -3,6 +3,8 @@
 //! and reconciled with the venue. Problems become alerts that trip
 //! protection on the next snapshot.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::engine_config::EngineConfig;
 use crate::config::engine_sections::LiquidityConfig;
 use crate::config::execution_sections::RiskConfig;
@@ -11,13 +13,13 @@ use crate::engine::regime::market_regime::EmergencyCause;
 use crate::execution::band_funding::Amounts;
 use crate::execution::band_mover::move_band;
 use crate::execution::inspection::inspect;
-use crate::execution::order_runner::OrderRunner;
+use crate::execution::order_runner::{OrderRunner, RunnerState};
 use crate::execution::outcome::ExecutionOutcome;
 use crate::execution::request::ExecutionRequest;
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::asset::Asset;
 use crate::portfolio::ledger::Ledger;
-use crate::portfolio::pnl_tracker::PnlTracker;
+use crate::portfolio::pnl_tracker::{PnlState, PnlTracker};
 use crate::venue::adapter::Venue;
 use crate::venue::order::{VenueError, Wallet};
 
@@ -29,16 +31,57 @@ pub struct Executor {
     initial: Amounts,
 }
 
+/// What of the executor survives a restart.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionState {
+    /// The starting holdings: the hold benchmark.
+    pub initial: Amounts,
+    pub pnl: PnlState,
+    pub runner: RunnerState,
+}
+
 impl Executor {
-    pub fn open(config: &EngineConfig, venue: Box<dyn Venue>) -> Result<Self, VenueError> {
-        let (runner, initial) = OrderRunner::open(config, venue)?;
+    /// Opens fresh books from the venue's balances, or picks up `saved` ones.
+    pub fn open(
+        config: &EngineConfig,
+        venue: Box<dyn Venue>,
+        saved: Option<ExecutionState>,
+    ) -> Result<Self, VenueError> {
+        let mut pnl = PnlTracker::new(&config.risk);
+        let (runner, initial) = match saved {
+            Some(state) => {
+                pnl.restore(state.pnl);
+                (
+                    OrderRunner::restore(config, venue, state.runner)?,
+                    state.initial,
+                )
+            }
+            None => {
+                let (runner, holding) = OrderRunner::open(config, venue)?;
+                let initial = Amounts::from_holding(holding, runner.scale());
+                (runner, initial)
+            }
+        };
         Ok(Self {
-            initial: Amounts::from_holding(initial, runner.scale()),
             runner,
-            pnl: PnlTracker::new(&config.risk),
+            pnl,
             liquidity: config.liquidity.clone(),
             risk: config.risk.clone(),
+            initial,
         })
+    }
+
+    pub fn state(&self) -> ExecutionState {
+        ExecutionState {
+            initial: self.initial,
+            pnl: self.pnl.state(),
+            runner: self.runner.state(),
+        }
+    }
+
+    /// Operator reconciliation; `false` when the venue could not be read.
+    pub fn reconcile(&mut self, timestamp: u64) -> bool {
+        self.runner.reconcile(timestamp).is_ok()
     }
 
     pub fn ledger(&self) -> &Ledger {

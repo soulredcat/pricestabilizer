@@ -4,12 +4,14 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::portfolio::asset::{Asset, serialize_units};
+use crate::portfolio::asset::{
+    Asset, deserialize_signed_units, serialize_signed_units, serialize_units,
+};
 use crate::portfolio::holding::Holding;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Account {
     /// Outside capital that funded the wallets.
@@ -43,6 +45,9 @@ pub enum EntryKind {
     FeeClaim,
     ActionCost,
     TreasuryBuy,
+    /// An operator's reconciliation with the venue after transfers made
+    /// outside the engine.
+    Adjustment,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -54,6 +59,18 @@ pub struct Entry {
     pub to: Account,
     #[serde(serialize_with = "serialize_units")]
     pub units: u128,
+}
+
+/// One ledger balance, saved so the books survive a restart.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct BalanceRow {
+    pub account: Account,
+    pub asset: Asset,
+    #[serde(
+        serialize_with = "serialize_signed_units",
+        deserialize_with = "deserialize_signed_units"
+    )]
+    pub units: i128,
 }
 
 /// A posting would have taken a holding account below zero.
@@ -77,6 +94,50 @@ impl Ledger {
                 from: Account::Capital,
                 to,
                 units: holding.get(asset),
+            });
+        }
+    }
+
+    /// Balances only: the entries themselves live in the journal.
+    pub fn balances(&self) -> Vec<BalanceRow> {
+        self.balances
+            .iter()
+            .map(|(&(account, asset), &units)| BalanceRow {
+                account,
+                asset,
+                units,
+            })
+            .collect()
+    }
+
+    pub fn from_balances(rows: &[BalanceRow]) -> Self {
+        Self {
+            entries: Vec::new(),
+            balances: rows
+                .iter()
+                .map(|row| ((row.account, row.asset), row.units))
+                .collect(),
+        }
+    }
+
+    /// Books whatever makes `account` hold exactly `target`, against the
+    /// capital account: the operator's reconciliation with the venue.
+    pub fn adjust_to(&mut self, timestamp: u64, account: Account, target: Holding) {
+        for asset in [Asset::Token, Asset::Quote] {
+            let current = self.balance(account, asset);
+            let wanted = signed(target.get(asset));
+            let (from, to) = if wanted > current {
+                (Account::Capital, account)
+            } else {
+                (account, Account::Capital)
+            };
+            self.apply(Entry {
+                timestamp,
+                kind: EntryKind::Adjustment,
+                asset,
+                from,
+                to,
+                units: wanted.abs_diff(current),
             });
         }
     }
@@ -155,6 +216,33 @@ mod tests {
             Holding { token: 7, quote: 6 }
         );
         assert_eq!(ledger.entries().len(), 3);
+    }
+
+    #[test]
+    fn balances_round_trip_and_adjustments_reach_the_target() {
+        let mut ledger = Ledger::default();
+        ledger.deposit(
+            0,
+            Account::Operational,
+            Holding {
+                token: 7,
+                quote: 10,
+            },
+        );
+        let mut restored = Ledger::from_balances(&ledger.balances());
+        assert_eq!(
+            restored.holding(Account::Operational),
+            Holding {
+                token: 7,
+                quote: 10
+            }
+        );
+        restored.adjust_to(5, Account::Operational, Holding { token: 9, quote: 4 });
+        assert_eq!(
+            restored.holding(Account::Operational),
+            Holding { token: 9, quote: 4 }
+        );
+        assert_eq!(restored.entries().len(), 2);
     }
 
     #[test]

@@ -2,6 +2,8 @@
 //! totals come from the order runner, which sees every fill. Unclaimed fees
 //! are reported apart from cash, never mixed in.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::execution_sections::RiskConfig;
 
 const SECONDS_PER_DAY: u64 = 86_400;
@@ -22,7 +24,7 @@ pub struct BooksSnapshot {
 }
 
 /// Running totals over every fill, in quote.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct FillTotals {
     pub fees_claimed: f64,
     pub action_costs: f64,
@@ -43,6 +45,14 @@ pub struct PnlTracker {
     peak_equity: f64,
     day_open: Option<(u64, f64)>,
     worst_drawdown: f64,
+}
+
+/// Loss baselines survive a restart, so restarting never resets a limit.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PnlState {
+    pub peak_equity: f64,
+    pub day_open: Option<(u64, f64)>,
+    pub worst_drawdown: f64,
 }
 
 impl PnlTracker {
@@ -74,6 +84,20 @@ impl PnlTracker {
         };
         self.worst_drawdown = self.worst_drawdown.max(drawdown);
         drawdown > self.max_drawdown || day_open_equity - equity > self.max_daily_loss_quote
+    }
+
+    pub fn state(&self) -> PnlState {
+        PnlState {
+            peak_equity: self.peak_equity,
+            day_open: self.day_open,
+            worst_drawdown: self.worst_drawdown,
+        }
+    }
+
+    pub fn restore(&mut self, state: PnlState) {
+        self.peak_equity = state.peak_equity;
+        self.day_open = state.day_open;
+        self.worst_drawdown = state.worst_drawdown;
     }
 
     /// After an operator resumes, losses so far are acknowledged: the peak

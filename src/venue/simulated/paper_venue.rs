@@ -4,6 +4,9 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 use crate::config::venue_section::SimulatedVenueConfig;
 use crate::engine::liquidity::band_math;
 use crate::engine::liquidity::price_band::PriceBand;
@@ -172,6 +175,15 @@ impl PaperVenue {
     }
 }
 
+/// The paper venue's wallets and band: on a chain they would persist by
+/// themselves, so a shadow run saves them with the engine state.
+#[derive(Serialize, Deserialize)]
+struct PaperState {
+    operational: Holding,
+    treasury: Holding,
+    position: Option<PaperPosition>,
+}
+
 impl Venue for PaperVenue {
     fn observe(&mut self, market: &MarketSnapshot) -> Result<(), VenueError> {
         if let Some(position) = self.position.as_mut() {
@@ -213,6 +225,23 @@ impl Venue for PaperVenue {
 
     fn balances(&mut self, wallet: Wallet) -> Result<Holding, VenueError> {
         Ok(*self.wallet_mut(wallet))
+    }
+
+    fn saved_state(&self) -> Option<Value> {
+        serde_json::to_value(PaperState {
+            operational: self.operational,
+            treasury: self.treasury,
+            position: self.position,
+        })
+        .ok()
+    }
+
+    fn restore_state(&mut self, state: Value) -> Result<(), VenueError> {
+        let state: PaperState = serde_json::from_value(state).map_err(|_| VenueError::Connector)?;
+        self.operational = state.operational;
+        self.treasury = state.treasury;
+        self.position = state.position;
+        Ok(())
     }
 
     fn position(&mut self, market: &MarketSnapshot) -> Result<Option<PositionView>, VenueError> {

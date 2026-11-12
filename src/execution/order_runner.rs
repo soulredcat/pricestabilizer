@@ -2,6 +2,9 @@
 //! It owns the venue and the books, so every fill is booked exactly once,
 //! checked against its order, and every venue failure is counted.
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 use crate::config::engine_config::EngineConfig;
 use crate::config::venue_section::VenueConfig;
 use crate::execution::booking;
@@ -12,7 +15,7 @@ use crate::execution::risk_gate::{OrderContext, RiskGate};
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::asset::{Asset, UnitScale};
 use crate::portfolio::holding::Holding;
-use crate::portfolio::ledger::{Account, Ledger};
+use crate::portfolio::ledger::{Account, BalanceRow, Ledger};
 use crate::portfolio::pnl_tracker::FillTotals;
 use crate::venue::adapter::Venue;
 use crate::venue::order::{Fill, PositionView, VenueError, VenueOrder, Wallet};
@@ -32,6 +35,20 @@ pub struct OrderRunner {
     totals: FillTotals,
 }
 
+/// What of the runner survives a restart: order numbering, alerts not yet
+/// acknowledged, fee and cost totals, and the ledger balances.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunnerState {
+    pub next_order_id: u64,
+    pub consecutive_failures: u32,
+    pub ledger_broken: bool,
+    pub anomaly: bool,
+    pub totals: FillTotals,
+    pub balances: Vec<BalanceRow>,
+    /// The venue's own state, for venues that keep any (the paper venue).
+    pub venue: Option<Value>,
+}
+
 impl OrderRunner {
     /// Opens the books with whatever the venue holds right now; also returns
     /// that starting holding across both wallets.
@@ -39,18 +56,44 @@ impl OrderRunner {
         config: &EngineConfig,
         mut venue: Box<dyn Venue>,
     ) -> Result<(Self, Holding), VenueError> {
-        let scale = UnitScale::new(config.assets.token_decimals, config.assets.quote_decimals);
         let operational = venue.balances(Wallet::Operational)?;
         let treasury = venue.balances(Wallet::Treasury)?;
         let mut ledger = Ledger::default();
         let opened_at = config.growth.start_timestamp;
         ledger.deposit(opened_at, Account::Operational, operational);
         ledger.deposit(opened_at, Account::Treasury, treasury);
+        Ok((
+            Self::assemble(config, venue, ledger),
+            operational.plus(treasury),
+        ))
+    }
+
+    /// Picks up a saved runner. No deposits are booked: the next
+    /// reconciliation compares the saved ledger with what the venue holds.
+    pub fn restore(
+        config: &EngineConfig,
+        mut venue: Box<dyn Venue>,
+        state: RunnerState,
+    ) -> Result<Self, VenueError> {
+        if let Some(saved) = state.venue {
+            venue.restore_state(saved)?;
+        }
+        let mut runner = Self::assemble(config, venue, Ledger::from_balances(&state.balances));
+        runner.guards.resume_from(state.next_order_id);
+        runner.consecutive_failures = state.consecutive_failures;
+        runner.ledger_broken = state.ledger_broken;
+        runner.anomaly = state.anomaly;
+        runner.totals = state.totals;
+        Ok(runner)
+    }
+
+    fn assemble(config: &EngineConfig, venue: Box<dyn Venue>, ledger: Ledger) -> Self {
+        let scale = UnitScale::new(config.assets.token_decimals, config.assets.quote_decimals);
         let send_orders = match &config.venue {
             VenueConfig::Simulated(_) => true,
             VenueConfig::External(settings) => settings.send_orders,
         };
-        let runner = Self {
+        Self {
             venue,
             ledger,
             gate: RiskGate::new(&config.risk, scale, config.price.depth_reference_move),
@@ -61,8 +104,32 @@ impl OrderRunner {
             ledger_broken: false,
             anomaly: false,
             totals: FillTotals::default(),
-        };
-        Ok((runner, operational.plus(treasury)))
+        }
+    }
+
+    pub fn state(&self) -> RunnerState {
+        RunnerState {
+            next_order_id: self.guards.next_order_id(),
+            consecutive_failures: self.consecutive_failures,
+            ledger_broken: self.ledger_broken,
+            anomaly: self.anomaly,
+            totals: self.totals,
+            balances: self.ledger.balances(),
+            venue: self.venue.saved_state(),
+        }
+    }
+
+    /// Adopts the venue's wallets in the ledger: the operator's answer to a
+    /// mismatch caused by transfers made outside the engine.
+    pub fn reconcile(&mut self, timestamp: u64) -> Result<(), VenueError> {
+        let operational = self.venue.balances(Wallet::Operational)?;
+        let treasury = self.venue.balances(Wallet::Treasury)?;
+        self.ledger
+            .adjust_to(timestamp, Account::Operational, operational);
+        self.ledger
+            .adjust_to(timestamp, Account::Treasury, treasury);
+        self.ledger_broken = false;
+        Ok(())
     }
 
     pub fn scale(&self) -> UnitScale {

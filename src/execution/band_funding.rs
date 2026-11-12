@@ -1,6 +1,8 @@
 //! Sizes the band and plans the swap that funds it. Pure arithmetic: the
 //! executor still sends every resulting order through the risk gate.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::engine_sections::LiquidityConfig;
 use crate::config::execution_sections::RiskConfig;
 use crate::engine::liquidity::band_math;
@@ -9,7 +11,7 @@ use crate::portfolio::asset::{Asset, UnitScale};
 use crate::portfolio::holding::Holding;
 
 /// Human amounts of both assets.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Amounts {
     pub token: f64,
     pub quote: f64,

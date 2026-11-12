@@ -6,7 +6,7 @@ use crate::config::validation::engine_rules::{
     check_growth, check_liquidity, check_price, check_regime,
 };
 use crate::config::validation::execution_rules::{
-    check_assets, check_feed, check_risk, check_treasury, check_venue,
+    check_assets, check_feed, check_risk, check_state, check_treasury, check_venue,
 };
 
 impl EngineConfig {
@@ -19,6 +19,7 @@ impl EngineConfig {
         check_risk(&self.risk)?;
         check_venue(&self.venue)?;
         check_treasury(&self.treasury)?;
+        check_state(&self.state, &self.venue)?;
         check_feed(&self.feed)
     }
 }

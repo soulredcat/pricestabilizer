@@ -11,6 +11,15 @@ pub struct ModeController {
 }
 
 impl ModeController {
+    /// Restores a latch saved before a restart: protection survives it.
+    pub fn with_latch(latched: Option<EmergencyCause>) -> Self {
+        Self { latched }
+    }
+
+    pub fn latched(&self) -> Option<EmergencyCause> {
+        self.latched
+    }
+
     pub fn update(
         &mut self,
         regime: Regime,

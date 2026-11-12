@@ -66,10 +66,14 @@ fn run(config: &PathBuf, stdin: &str) -> String {
 #[test]
 fn paper_connector_over_the_protocol_matches_the_in_process_venue() {
     let paper = write_config("pricestabilizer-e2e-paper.toml", &config_with("[none]", ""));
+    // A venue that sends orders must persist its state; start from none.
+    let state_dir = std::env::temp_dir().join("pricestabilizer-e2e-state");
+    fs::remove_dir_all(&state_dir).ok();
     let connector = format!(
-        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]\ntimeout_secs = 30\nsend_orders = true",
+        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]\ntimeout_secs = 30\nsend_orders = true\n\n[state]\ndir = {:?}",
         BINARY,
-        paper.display().to_string()
+        paper.display().to_string(),
+        state_dir.display().to_string()
     );
     let external = write_config(
         "pricestabilizer-e2e-external.toml",

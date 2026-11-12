@@ -1,6 +1,8 @@
 //! The one interface between the engine and a market venue. Implementations
 //! hide everything chain-specific: signing, gas, ticks, order books.
 
+use serde_json::Value;
+
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::holding::Holding;
 use crate::venue::order::{Fill, OrderGuard, PositionView, VenueError, VenueOrder, Wallet};
@@ -21,4 +23,14 @@ pub trait Venue {
     fn balances(&mut self, wallet: Wallet) -> Result<Holding, VenueError>;
 
     fn position(&mut self, market: &MarketSnapshot) -> Result<Option<PositionView>, VenueError>;
+
+    /// What the venue itself must carry across a restart. Venues whose state
+    /// lives on a chain keep nothing here.
+    fn saved_state(&self) -> Option<Value> {
+        None
+    }
+
+    fn restore_state(&mut self, _state: Value) -> Result<(), VenueError> {
+        Ok(())
+    }
 }

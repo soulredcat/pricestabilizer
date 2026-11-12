@@ -1,6 +1,8 @@
 //! A proposed treasury purchase and the events in its life.
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Proposal {
     pub id: u64,
     pub created_at: u64,

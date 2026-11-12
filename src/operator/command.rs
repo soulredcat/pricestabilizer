@@ -9,6 +9,9 @@ pub enum OperatorCommand {
     Pause,
     /// Leave protection, acknowledging losses so far.
     Resume,
+    /// Adopt the venue's wallet balances in the ledger after transfers made
+    /// outside the engine; protection still needs a `resume` afterwards.
+    Reconcile,
     Approve {
         proposal: u64,
     },
@@ -31,6 +34,9 @@ pub enum OperatorEvent {
     Resumed,
     /// Resume refused: the market is still in an emergency.
     ResumeRefused,
+    Reconciled,
+    /// The venue could not be read, so nothing was adjusted.
+    ReconcileFailed,
 }
 
 impl OperatorEvent {
@@ -39,6 +45,8 @@ impl OperatorEvent {
             Self::Paused => "operator_pause",
             Self::Resumed => "operator_resume",
             Self::ResumeRefused => "operator_resume_refused",
+            Self::Reconciled => "operator_reconcile",
+            Self::ReconcileFailed => "operator_reconcile_failed",
         }
     }
 }

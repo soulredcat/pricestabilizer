@@ -15,12 +15,15 @@ pub struct CommandInbox {
     source: Option<(PathBuf, BufReader<File>)>,
     partial_line: String,
     lines_read: usize,
+    /// Lines handled before a restart; they are never applied twice.
+    already_consumed: usize,
     queued: Vec<ScheduledCommand>,
 }
 
 impl CommandInbox {
-    /// An inbox without a path never delivers anything.
-    pub fn open(path: Option<&Path>) -> Result<Self, AppError> {
+    /// An inbox without a path never delivers anything. The first
+    /// `already_consumed` lines were handled before a restart and are skipped.
+    pub fn open(path: Option<&Path>, already_consumed: usize) -> Result<Self, AppError> {
         let Some(path) = path else {
             return Ok(Self::default());
         };
@@ -30,8 +33,15 @@ impl CommandInbox {
         })?;
         Ok(Self {
             source: Some((path.to_path_buf(), BufReader::new(file))),
+            already_consumed,
             ..Self::default()
         })
+    }
+
+    /// Lines read so far, counting those skipped after a restart. A queued
+    /// command counts as consumed: it is saved with the state it will change.
+    pub fn consumed(&self) -> usize {
+        self.lines_read.max(self.already_consumed)
     }
 
     /// Commands whose time has come, oldest first.
@@ -64,7 +74,7 @@ impl CommandInbox {
             }
             self.lines_read += 1;
             let line = std::mem::take(&mut self.partial_line);
-            if line.trim().is_empty() {
+            if self.lines_read <= self.already_consumed || line.trim().is_empty() {
                 continue;
             }
             // A typo must not stop a live engine: report it and read on.
@@ -96,7 +106,7 @@ mod tests {
             "{\"at\":20,\"command\":\"resume\"}\n{\"at\":10,\"command\":\"pause\"}\n",
         )
         .expect("writable");
-        let mut inbox = CommandInbox::open(Some(&path)).expect("opens");
+        let mut inbox = CommandInbox::open(Some(&path), 0).expect("opens");
         assert!(inbox.due(5).expect("reads").is_empty());
         assert_eq!(inbox.due(15).expect("reads"), vec![OperatorCommand::Pause]);
 
@@ -116,9 +126,22 @@ mod tests {
     }
 
     #[test]
+    fn lines_consumed_before_a_restart_are_never_applied_again() {
+        let path = std::env::temp_dir().join("pricestabilizer-inbox-restart.jsonl");
+        fs::write(
+            &path,
+            "{\"at\":1,\"command\":\"approve\",\"proposal\":1}\n{\"at\":2,\"command\":\"pause\"}\n",
+        )
+        .expect("writable");
+        let mut inbox = CommandInbox::open(Some(&path), 1).expect("opens");
+        assert_eq!(inbox.due(10).expect("reads"), vec![OperatorCommand::Pause]);
+        assert_eq!(inbox.consumed(), 2);
+    }
+
+    #[test]
     fn no_path_means_no_commands() {
         assert!(
-            CommandInbox::open(None)
+            CommandInbox::open(None, 0)
                 .expect("opens")
                 .due(u64::MAX)
                 .expect("reads")

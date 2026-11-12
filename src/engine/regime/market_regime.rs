@@ -1,5 +1,7 @@
 //! Regime vocabulary shared by the classifier, mode controller and report.
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Regime {
     Bullish,
@@ -12,7 +14,8 @@ pub enum Regime {
     Emergency(EmergencyCause),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EmergencyCause {
     StableDepeg,
     ExtremeMove,

@@ -4,19 +4,29 @@
 //! executor's feedback from the previous snapshot tells it whether its band
 //! really exists and whether the books raised an alert.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::engine_config::EngineConfig;
 use crate::engine::growth::target_curve::TargetCurve;
 use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
-use crate::engine::liquidity::band_keeper::BandKeeper;
+use crate::engine::liquidity::band_keeper::{BandKeeper, BandKeeperState};
 use crate::engine::mode::controller::ModeController;
 use crate::engine::mode::operating_mode::OperatingMode;
 use crate::engine::price::assessor::PriceAssessor;
 use crate::engine::price::confidence::PriceAssessment;
 use crate::engine::regime::classifier::{RegimeClassifier, RegimeReading};
-use crate::engine::regime::market_regime::Regime;
+use crate::engine::regime::market_regime::{EmergencyCause, Regime};
 use crate::engine::strategy::decision::TickDecision;
 use crate::engine::strategy::feedback::ExecutionFeedback;
 use crate::market::snapshot::MarketSnapshot;
+
+/// What of the pipeline survives a restart. Price and regime windows do not:
+/// after a restart they warm up again, so nothing is decided on stale data.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct PipelineState {
+    pub protection: Option<EmergencyCause>,
+    pub band: BandKeeperState,
+}
 
 pub struct StrategyPipeline {
     target_curve: TargetCurve,
@@ -37,6 +47,18 @@ impl StrategyPipeline {
             band: BandKeeper::new(&config.liquidity),
             last_regime: None,
         }
+    }
+
+    pub fn state(&self) -> PipelineState {
+        PipelineState {
+            protection: self.mode.latched(),
+            band: self.band.state(),
+        }
+    }
+
+    pub fn restore(&mut self, state: PipelineState) {
+        self.mode = ModeController::with_latch(state.protection);
+        self.band.restore(state.band);
     }
 
     pub fn pause(&mut self) {

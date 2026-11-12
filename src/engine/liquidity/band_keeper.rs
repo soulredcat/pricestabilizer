@@ -4,6 +4,8 @@
 //! a costly move. Every change, including a first open, respects the cooldown,
 //! so a venue that keeps refusing is not hammered every snapshot.
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::engine_sections::LiquidityConfig;
 use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
 use crate::engine::liquidity::price_band::PriceBand;
@@ -12,6 +14,13 @@ pub struct BandKeeper {
     config: LiquidityConfig,
     current: Option<PriceBand>,
     last_change: Option<u64>,
+}
+
+/// What of the band keeper survives a restart.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct BandKeeperState {
+    pub current: Option<PriceBand>,
+    pub last_change: Option<u64>,
 }
 
 impl BandKeeper {
@@ -25,6 +34,18 @@ impl BandKeeper {
 
     pub fn current(&self) -> Option<PriceBand> {
         self.current
+    }
+
+    pub fn state(&self) -> BandKeeperState {
+        BandKeeperState {
+            current: self.current,
+            last_change: self.last_change,
+        }
+    }
+
+    pub fn restore(&mut self, state: BandKeeperState) {
+        self.current = state.current;
+        self.last_change = state.last_change;
     }
 
     /// The venue holds no band (an order was blocked or failed): plan from

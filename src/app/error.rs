@@ -31,9 +31,21 @@ pub enum AppError {
         feed: String,
         reason: &'static str,
     },
-    LedgerExport {
+    LedgerJournal {
         path: PathBuf,
         source: io::Error,
+    },
+    StateIo {
+        path: PathBuf,
+        source: io::Error,
+    },
+    StateParse {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
+    StateVersion {
+        path: PathBuf,
+        found: u32,
     },
     ConnectorIo {
         source: io::Error,
@@ -59,8 +71,23 @@ impl fmt::Display for AppError {
             Self::VenueUnavailable { feed, reason } => {
                 write!(f, "feed {feed}: venue unavailable ({reason})")
             }
-            Self::LedgerExport { path, source } => {
-                write!(f, "cannot write ledger {}: {source}", path.display())
+            Self::LedgerJournal { path, source } => {
+                write!(
+                    f,
+                    "cannot write ledger journal {}: {source}",
+                    path.display()
+                )
+            }
+            Self::StateIo { path, source } => {
+                write!(f, "cannot access state {}: {source}", path.display())
+            }
+            Self::StateParse { path, source } => write!(
+                f,
+                "state {} is unreadable ({source}); refusing to start fresh",
+                path.display()
+            ),
+            Self::StateVersion { path, found } => {
+                write!(f, "state {} has unknown version {found}", path.display())
             }
             Self::ConnectorIo { source } => write!(f, "connector stdio failed: {source}"),
         }
