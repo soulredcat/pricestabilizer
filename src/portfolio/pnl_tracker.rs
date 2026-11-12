@@ -116,6 +116,10 @@ mod tests {
             max_daily_loss_quote: 100.0,
             max_drawdown: 0.2,
             max_consecutive_failures: 3,
+            order_ttl_secs: 60,
+            max_price_drift: 0.01,
+            max_swap_shortfall: 0.02,
+            max_action_cost_quote: 1.0,
         })
     }
 

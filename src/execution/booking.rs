@@ -13,18 +13,20 @@ pub fn book(
     let mut poster = Poster { ledger, timestamp };
     let principal_quote = fill.spent.quote.saturating_sub(fill.action_cost);
     match *order {
-        VenueOrder::Swap {
-            wallet,
-            sell,
-            units,
-        } => {
+        VenueOrder::Swap { wallet, sell, .. } => {
+            // Book what the venue actually took, which may be less than the
+            // order allowed.
             let account = account_of(wallet);
             let bought = sell.counterpart();
             let kind = match wallet {
                 Wallet::Operational => EntryKind::Swap,
                 Wallet::Treasury => EntryKind::TreasuryBuy,
             };
-            poster.post(kind, sell, account, Account::Market, units)?;
+            let sold = match sell {
+                Asset::Token => fill.spent.token,
+                Asset::Quote => principal_quote,
+            };
+            poster.post(kind, sell, account, Account::Market, sold)?;
             poster.post(
                 kind,
                 bought,

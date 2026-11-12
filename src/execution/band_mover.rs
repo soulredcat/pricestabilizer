@@ -40,12 +40,11 @@ pub fn move_band(
     if let Some((sell, amount)) =
         band_funding::rebalance_swap(target, wallet, price, liquidity, risk)
     {
-        let swap = VenueOrder::Swap {
-            wallet: Wallet::Operational,
-            sell,
-            units: scale.to_units(sell, amount).min(holding.get(sell)),
-        };
-        if runner.run(swap, market, outcome).is_none() {
+        let units = scale.to_units(sell, amount).min(holding.get(sell));
+        if runner
+            .swap(Wallet::Operational, sell, units, market, outcome)
+            .is_none()
+        {
             return;
         }
     }

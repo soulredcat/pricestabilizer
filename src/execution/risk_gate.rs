@@ -55,6 +55,7 @@ impl RiskGate {
                 wallet,
                 sell,
                 units,
+                ..
             } => self.check_swap(wallet, sell, units, context),
             VenueOrder::AddBand { quote_units, .. } => {
                 self.check_reserve(context.operational.quote.saturating_sub(quote_units))
@@ -124,6 +125,10 @@ mod tests {
             max_daily_loss_quote: 1.0,
             max_drawdown: 0.1,
             max_consecutive_failures: 3,
+            order_ttl_secs: 60,
+            max_price_drift: 0.01,
+            max_swap_shortfall: 0.02,
+            max_action_cost_quote: 1.0,
         };
         RiskGate::new(&limits, UnitScale::new(0, 0), 0.02)
     }
@@ -145,6 +150,7 @@ mod tests {
             wallet: Wallet::Operational,
             sell: Asset::Quote,
             units,
+            min_received: 0,
         }
     }
 

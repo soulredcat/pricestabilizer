@@ -19,7 +19,7 @@ use crate::portfolio::asset::Asset;
 use crate::portfolio::ledger::Ledger;
 use crate::portfolio::pnl_tracker::PnlTracker;
 use crate::venue::adapter::Venue;
-use crate::venue::order::{VenueError, VenueOrder, Wallet};
+use crate::venue::order::{VenueError, Wallet};
 
 pub struct Executor {
     runner: OrderRunner,
@@ -85,11 +85,11 @@ impl Executor {
         outcome
     }
 
-    /// An operator resumed: losses so far and past failures are acknowledged.
-    /// A broken ledger is not; it needs a reconciliation, not a resume.
+    /// An operator resumed: losses so far, past failures and anomalies are
+    /// acknowledged. A broken ledger is not; it needs a reconciliation.
     pub fn acknowledge_losses(&mut self) {
         self.pnl.reset_baseline();
-        self.runner.reset_failures();
+        self.runner.acknowledge();
     }
 
     /// Buys with treasury quote, never more than the treasury wallet holds;
@@ -102,12 +102,10 @@ impl Executor {
     ) -> Option<f64> {
         let scale = self.runner.scale();
         let held = self.runner.balances(Wallet::Treasury, outcome)?;
-        let buy = VenueOrder::Swap {
-            wallet: Wallet::Treasury,
-            sell: Asset::Quote,
-            units: scale.to_units(Asset::Quote, quote).min(held.quote),
-        };
-        let fill = self.runner.run(buy, market, outcome)?;
+        let units = scale.to_units(Asset::Quote, quote).min(held.quote);
+        let fill = self
+            .runner
+            .swap(Wallet::Treasury, Asset::Quote, units, market, outcome)?;
         let spent = fill.spent.quote.saturating_sub(fill.action_cost);
         Some(scale.to_amount(Asset::Quote, spent))
     }
@@ -115,6 +113,8 @@ impl Executor {
     fn alert(&self, reconciled: bool, loss_breached: bool) -> Option<EmergencyCause> {
         if self.runner.ledger_broken() || !reconciled {
             Some(EmergencyCause::LedgerMismatch)
+        } else if self.runner.anomaly() {
+            Some(EmergencyCause::ExecutionAnomaly)
         } else if self.runner.consecutive_failures() >= self.risk.max_consecutive_failures {
             Some(EmergencyCause::VenueFailures)
         } else if loss_breached {

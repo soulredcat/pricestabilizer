@@ -67,7 +67,7 @@ fn run(config: &PathBuf, stdin: &str) -> String {
 fn paper_connector_over_the_protocol_matches_the_in_process_venue() {
     let paper = write_config("pricestabilizer-e2e-paper.toml", &config_with("[none]", ""));
     let connector = format!(
-        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]\ntimeout_secs = 30",
+        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]\ntimeout_secs = 30\nsend_orders = true",
         BINARY,
         paper.display().to_string()
     );

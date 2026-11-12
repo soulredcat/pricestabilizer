@@ -29,4 +29,14 @@ pub struct RiskConfig {
     pub max_drawdown: f64,
     /// Failed venue orders in a row that trip protection.
     pub max_consecutive_failures: u32,
+    /// A venue must refuse an order it has not executed within this time.
+    pub order_ttl_secs: u64,
+    /// A venue must refuse an order once its live price moved more than
+    /// this, relative, from the price the order was planned at.
+    pub max_price_drift: f64,
+    /// A swap must return at least `1 - this` of its value at spot (fees and
+    /// impact together); it is the swap's minimum out.
+    pub max_swap_shortfall: f64,
+    /// The most one order may pay in network costs, in quote.
+    pub max_action_cost_quote: f64,
 }

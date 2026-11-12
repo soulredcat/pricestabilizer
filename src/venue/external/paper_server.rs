@@ -51,7 +51,11 @@ pub fn serve(config: &EngineConfig) -> Result<(), AppError> {
 fn answer(venue: &mut PaperVenue, request: Request) -> Response {
     let result = match request.call {
         Call::Observe { market } => venue.observe(&market).map(|()| Value::Null),
-        Call::Execute { order, market } => venue.execute(&order, &market).and_then(to_value),
+        Call::Execute {
+            order,
+            guard,
+            market,
+        } => venue.execute(&order, &guard, &market).and_then(to_value),
         Call::Balances { wallet } => venue.balances(wallet).and_then(to_value),
         Call::Position { market } => venue.position(&market).and_then(to_value),
     };

@@ -1,5 +1,8 @@
 //! The paper venue: swaps pay fee plus depth-based impact, bands follow the
-//! liquidity curve, and every order pays a fixed network cost.
+//! liquidity curve, and every order pays a fixed network cost. It honours
+//! order guards and repeated order ids exactly as a live connector must.
+
+use std::collections::BTreeMap;
 
 use crate::config::venue_section::SimulatedVenueConfig;
 use crate::engine::liquidity::band_math;
@@ -9,8 +12,12 @@ use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::asset::{Asset, UnitScale};
 use crate::portfolio::holding::Holding;
 use crate::venue::adapter::Venue;
-use crate::venue::order::{Fill, PositionView, VenueError, VenueOrder, Wallet};
+use crate::venue::order::{Fill, OrderGuard, PositionView, VenueError, VenueOrder, Wallet};
+use crate::venue::simulated::guard_check::check_guard;
 use crate::venue::simulated::position::PaperPosition;
+
+/// How many recent fills are remembered for answering repeated order ids.
+const REMEMBERED_FILLS: usize = 1_024;
 
 pub struct PaperVenue {
     config: SimulatedVenueConfig,
@@ -19,6 +26,7 @@ pub struct PaperVenue {
     operational: Holding,
     treasury: Holding,
     position: Option<PaperPosition>,
+    fills_by_order: BTreeMap<u64, Fill>,
 }
 
 impl PaperVenue {
@@ -34,6 +42,7 @@ impl PaperVenue {
             depth_reference_move,
             scale,
             position: None,
+            fills_by_order: BTreeMap::new(),
         }
     }
 
@@ -64,6 +73,7 @@ impl PaperVenue {
         wallet: Wallet,
         sell: Asset,
         units: u128,
+        min_received: u128,
         market: &MarketSnapshot,
     ) -> Result<Fill, VenueError> {
         let price = market.spot_price;
@@ -82,9 +92,13 @@ impl PaperVenue {
             Asset::Quote => kept,
             Asset::Token => kept / price,
         };
+        let received = self.scale.to_units(bought, bought_amount);
+        if received < min_received {
+            return Err(VenueError::SlippageExceeded);
+        }
         let action_cost = self.action_cost();
         let fill = Fill {
-            received: Holding::of(bought, self.scale.to_units(bought, bought_amount)),
+            received: Holding::of(bought, received),
             spent: Holding::of(sell, units).plus(Holding::of(Asset::Quote, action_cost)),
             fees_claimed: 0,
             action_cost,
@@ -166,20 +180,35 @@ impl Venue for PaperVenue {
         Ok(())
     }
 
-    fn execute(&mut self, order: &VenueOrder, market: &MarketSnapshot) -> Result<Fill, VenueError> {
-        match *order {
+    fn execute(
+        &mut self,
+        order: &VenueOrder,
+        guard: &OrderGuard,
+        market: &MarketSnapshot,
+    ) -> Result<Fill, VenueError> {
+        if let Some(fill) = self.fills_by_order.get(&guard.order_id) {
+            return Ok(*fill);
+        }
+        check_guard(guard, market, self.action_cost())?;
+        let fill = match *order {
             VenueOrder::Swap {
                 wallet,
                 sell,
                 units,
-            } => self.swap(wallet, sell, units, market),
+                min_received,
+            } => self.swap(wallet, sell, units, min_received, market),
             VenueOrder::AddBand {
                 band,
                 token_units,
                 quote_units,
             } => self.add_band(band, token_units, quote_units, market),
             VenueOrder::RemoveBand => self.remove_band(market),
+        }?;
+        self.fills_by_order.insert(guard.order_id, fill);
+        if self.fills_by_order.len() > REMEMBERED_FILLS {
+            self.fills_by_order.pop_first();
         }
+        Ok(fill)
     }
 
     fn balances(&mut self, wallet: Wallet) -> Result<Holding, VenueError> {

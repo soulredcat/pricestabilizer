@@ -12,16 +12,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::market::snapshot::MarketSnapshot;
-use crate::venue::order::{VenueOrder, Wallet};
+use crate::venue::order::{OrderGuard, VenueOrder, Wallet};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 pub enum Call {
     /// Catch up with the market; answer `ok: null`.
     Observe { market: MarketSnapshot },
-    /// Execute an order; answer a fill.
+    /// Execute an order within its guard; answer a fill or a refusal.
     Execute {
         order: VenueOrder,
+        guard: OrderGuard,
         market: MarketSnapshot,
     },
     /// Report a wallet; answer a holding in base units.

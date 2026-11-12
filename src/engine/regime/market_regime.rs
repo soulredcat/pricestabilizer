@@ -23,6 +23,8 @@ pub enum EmergencyCause {
     LedgerMismatch,
     /// Too many venue orders failed in a row.
     VenueFailures,
+    /// A venue reported a fill that does not match its order.
+    ExecutionAnomaly,
     /// An operator paused the engine.
     OperatorPause,
 }
@@ -49,6 +51,7 @@ impl EmergencyCause {
             Self::LossLimit => "loss_limit",
             Self::LedgerMismatch => "ledger_mismatch",
             Self::VenueFailures => "venue_failures",
+            Self::ExecutionAnomaly => "execution_anomaly",
             Self::OperatorPause => "operator_pause",
         }
     }

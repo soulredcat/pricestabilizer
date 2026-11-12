@@ -8,6 +8,8 @@ use crate::venue::order::VenueError;
 #[derive(Debug, Clone, Copy)]
 pub enum OrderResult {
     Filled(&'static str),
+    /// Planned and gated, but not sent: the venue runs with `send_orders = false`.
+    Withheld(&'static str),
     Blocked(RiskBreach),
     Failed(VenueError),
 }
@@ -15,7 +17,7 @@ pub enum OrderResult {
 impl OrderResult {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Filled(order) => order,
+            Self::Filled(order) | Self::Withheld(order) => order,
             Self::Blocked(breach) => breach.label(),
             Self::Failed(error) => error.label(),
         }

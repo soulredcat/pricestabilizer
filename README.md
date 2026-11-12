@@ -122,6 +122,8 @@ A connector executes orders on one concrete market, in any language. Set
 [venue]
 kind = "external"
 command = ["node", "connector.js"]
+timeout_secs = 30       # an unanswered call counts as a connector failure
+send_orders = false     # kill switch: read-only until you flip it
 ```
 
 and the engine starts that process and speaks JSON lines on its stdin and
@@ -130,7 +132,7 @@ stdout, one request and one response per line, in order:
 | `method`   | request fields          | `ok` answer                                    |
 |------------|-------------------------|------------------------------------------------|
 | `observe`  | `market` (snapshot)     | `null`                                         |
-| `execute`  | `order`, `market`       | fill: `received`, `spent`, `fees_claimed`, `action_cost`, `swap_cost_quote` |
+| `execute`  | `order`, `guard`, `market` | fill: `received`, `spent`, `fees_claimed`, `action_cost`, `swap_cost_quote` |
 | `balances` | `wallet`                | holding: `token`, `quote`                      |
 | `position` | `market`                | `token`, `quote`, `unclaimed_fees`, or `null`  |
 
@@ -141,12 +143,29 @@ stdout, one request and one response per line, in order:
 ← {"id":2,"error":"no_position"}
 ```
 
-Orders are `swap` (`wallet`, `sell`, `units`), `add_band` (`band` with
-`lower`/`upper` prices, `token_units`, `quote_units`) and `remove_band`.
-Base units are decimal **strings**. Error codes: `insufficient_operational`,
-`insufficient_treasury`, `no_position`, `position_exists`, `no_liquidity`;
-anything else counts as a connector failure, and repeated failures trip
-protection.
+Orders are `swap` (`wallet`, `sell`, `units`, `min_received`), `add_band`
+(`band` with `lower`/`upper` prices, `token_units`, `quote_units`) and
+`remove_band`. Base units are decimal **strings**.
+
+Every `execute` carries a `guard` the connector must honour exactly, or
+refuse the order without executing anything:
+
+| guard field        | the connector must                                           |
+|--------------------|--------------------------------------------------------------|
+| `order_id`         | answer a repeated id with the original result, never execute twice |
+| `deadline`         | refuse with `expired` after this Unix time                   |
+| `reference_price`, `max_price_drift` | refuse with `price_moved` when the live price drifted further |
+| `max_action_cost`  | refuse with `cost_too_high` when network costs would exceed it |
+| `min_received` (swap) | refuse with `slippage_exceeded` rather than accept less (use the venue's own min-out protection) |
+
+Error codes: `insufficient_operational`, `insufficient_treasury`,
+`no_position`, `position_exists`, `no_liquidity`, `expired`, `price_moved`,
+`slippage_exceeded`, `cost_too_high`. Anything else, a malformed answer or
+no answer within `timeout_secs` counts as a connector failure; repeated
+failures trip protection. Every fill is checked against its order, and a
+fill that does not match (for example less than `min_received`) trips
+protection as an `execution_anomaly`. Connectors must log to stderr: stdout
+carries only protocol lines.
 
 The binary contains a reference connector, the paper venue served over this
 protocol. A real connector must answer the same calls the same way:

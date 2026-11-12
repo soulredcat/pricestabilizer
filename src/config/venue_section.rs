@@ -18,6 +18,9 @@ pub struct ExternalVenueConfig {
     pub command: Vec<String>,
     /// A call unanswered after this long counts as a connector failure.
     pub timeout_secs: u64,
+    /// Kill switch. `false` reads balances and positions but never sends an
+    /// order: every order is planned, gated and logged as withheld.
+    pub send_orders: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

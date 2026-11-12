@@ -51,6 +51,10 @@ max_token_exposure_quote = 9000.0
 max_daily_loss_quote = 900.0
 max_drawdown = 0.15
 max_consecutive_failures = 3
+order_ttl_secs = 120            # venue refuses orders older than this
+max_price_drift = 0.01          # ...or when its price moved over 1% since planning
+max_swap_shortfall = 0.02       # swaps return at least 98% of spot value
+max_action_cost_quote = 5.0     # ...and never pay more than this in network costs
 
 [venue]
 kind = "simulated"

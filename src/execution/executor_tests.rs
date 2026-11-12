@@ -13,7 +13,7 @@ use crate::execution::request::ExecutionRequest;
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::holding::Holding;
 use crate::venue::adapter::Venue;
-use crate::venue::order::{Fill, PositionView, VenueError, VenueOrder, Wallet};
+use crate::venue::order::{Fill, OrderGuard, PositionView, VenueError, VenueOrder, Wallet};
 use crate::venue::venue_factory::open_venue;
 
 const EXAMPLE: &str = include_str!("../../config/simulation.example.toml");
@@ -52,7 +52,12 @@ impl Venue for BrokenVenue {
         Ok(())
     }
 
-    fn execute(&mut self, _: &VenueOrder, _: &MarketSnapshot) -> Result<Fill, VenueError> {
+    fn execute(
+        &mut self,
+        _: &VenueOrder,
+        _: &OrderGuard,
+        _: &MarketSnapshot,
+    ) -> Result<Fill, VenueError> {
         Err(VenueError::NoLiquidity)
     }
 
@@ -108,7 +113,12 @@ impl Venue for RecordingVenue {
         Ok(())
     }
 
-    fn execute(&mut self, order: &VenueOrder, _: &MarketSnapshot) -> Result<Fill, VenueError> {
+    fn execute(
+        &mut self,
+        order: &VenueOrder,
+        _: &OrderGuard,
+        _: &MarketSnapshot,
+    ) -> Result<Fill, VenueError> {
         self.orders.borrow_mut().push(*order);
         Ok(Fill::default())
     }
@@ -215,4 +225,57 @@ fn repeated_venue_failures_raise_an_alert() {
         .collect();
     assert_eq!(alerts[0], None);
     assert_eq!(alerts[2], Some(EmergencyCause::VenueFailures));
+}
+
+/// The example config with its venue swapped for a dry-run external one.
+fn dry_run_config() -> EngineConfig {
+    let start = EXAMPLE.find("[venue]").expect("venue section");
+    let end = EXAMPLE.find("[treasury]").expect("treasury section");
+    let venue = "[venue]\nkind = \"external\"\ncommand = [\"connector\"]\ntimeout_secs = 5\nsend_orders = false\n\n";
+    let text = format!("{}{venue}{}", &EXAMPLE[..start], &EXAMPLE[end..]);
+    EngineConfig::parse(&text, Path::new("dry-run")).expect("valid config")
+}
+
+fn token_short_wallet() -> Holding {
+    Holding {
+        token: 100_000_000_000,
+        quote: 9_000_000_000,
+    }
+}
+
+#[test]
+fn kill_switch_withholds_every_order() {
+    let orders = Rc::new(RefCell::new(Vec::new()));
+    let venue = RecordingVenue {
+        wallet: token_short_wallet(),
+        orders: Rc::clone(&orders),
+    };
+    let mut executor = Executor::open(&dry_run_config(), Box::new(venue)).expect("opens");
+    let open = LiquidityAction::Open(PriceBand::around(1.0, 0.05));
+    let outcome = executor.on_decision(&market(1, 1.0), &request(open, Some(100.0), 1.0));
+    let labels: Vec<_> = outcome.orders.iter().map(|order| order.label()).collect();
+    assert_eq!(labels, vec!["withheld_swap", "withheld_swap"]);
+    assert!(orders.borrow().is_empty(), "the venue never saw an order");
+    assert_eq!(outcome.treasury_spent, None);
+}
+
+#[test]
+fn a_fill_that_does_not_match_its_order_trips_protection() {
+    // The recording venue answers every order with an empty fill, so a swap
+    // "returns" nothing although it promised a minimum out.
+    let venue = RecordingVenue {
+        wallet: token_short_wallet(),
+        orders: Rc::new(RefCell::new(Vec::new())),
+    };
+    let mut executor = Executor::open(&config(), Box::new(venue)).expect("opens");
+    let open = LiquidityAction::Open(PriceBand::around(1.0, 0.05));
+    let outcome = executor.on_decision(&market(1, 1.0), &request(open, None, 1.0));
+    assert_eq!(
+        outcome.feedback.alert,
+        Some(EmergencyCause::ExecutionAnomaly)
+    );
+    executor.acknowledge_losses();
+    let calm = LiquidityAction::Hold(HoldReason::InBand);
+    let after = executor.on_decision(&market(2, 1.0), &request(calm, None, 1.0));
+    assert_eq!(after.feedback.alert, None, "an operator resume clears it");
 }

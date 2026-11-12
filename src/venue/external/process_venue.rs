@@ -16,7 +16,7 @@ use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::holding::Holding;
 use crate::venue::adapter::Venue;
 use crate::venue::external::protocol::{Call, Request, Response};
-use crate::venue::order::{Fill, PositionView, VenueError, VenueOrder, Wallet};
+use crate::venue::order::{Fill, OrderGuard, PositionView, VenueError, VenueOrder, Wallet};
 
 pub struct ProcessVenue {
     child: Child,
@@ -112,9 +112,15 @@ impl Venue for ProcessVenue {
         self.call(Call::Observe { market: *market })
     }
 
-    fn execute(&mut self, order: &VenueOrder, market: &MarketSnapshot) -> Result<Fill, VenueError> {
+    fn execute(
+        &mut self,
+        order: &VenueOrder,
+        guard: &OrderGuard,
+        market: &MarketSnapshot,
+    ) -> Result<Fill, VenueError> {
         self.call(Call::Execute {
             order: *order,
+            guard: *guard,
             market: *market,
         })
     }

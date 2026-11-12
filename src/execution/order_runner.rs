@@ -1,9 +1,12 @@
 //! Sends single orders: risk gate first, then the venue, then the ledger.
-//! It owns the venue and the books, so every fill is booked exactly once
-//! and every venue failure is counted.
+//! It owns the venue and the books, so every fill is booked exactly once,
+//! checked against its order, and every venue failure is counted.
 
 use crate::config::engine_config::EngineConfig;
+use crate::config::venue_section::VenueConfig;
 use crate::execution::booking;
+use crate::execution::fill_check;
+use crate::execution::guard_rules::GuardRules;
 use crate::execution::outcome::{ExecutionOutcome, OrderResult};
 use crate::execution::risk_gate::{OrderContext, RiskGate};
 use crate::market::snapshot::MarketSnapshot;
@@ -18,9 +21,14 @@ pub struct OrderRunner {
     venue: Box<dyn Venue>,
     ledger: Ledger,
     gate: RiskGate,
+    guards: GuardRules,
     scale: UnitScale,
+    /// `false`: orders are planned and gated but withheld (dry run).
+    send_orders: bool,
     consecutive_failures: u32,
     ledger_broken: bool,
+    /// A venue answered with a fill that does not match its order.
+    anomaly: bool,
     totals: FillTotals,
 }
 
@@ -38,13 +46,20 @@ impl OrderRunner {
         let opened_at = config.growth.start_timestamp;
         ledger.deposit(opened_at, Account::Operational, operational);
         ledger.deposit(opened_at, Account::Treasury, treasury);
+        let send_orders = match &config.venue {
+            VenueConfig::Simulated(_) => true,
+            VenueConfig::External(settings) => settings.send_orders,
+        };
         let runner = Self {
             venue,
             ledger,
             gate: RiskGate::new(&config.risk, scale, config.price.depth_reference_move),
+            guards: GuardRules::new(&config.risk, scale),
             scale,
+            send_orders,
             consecutive_failures: 0,
             ledger_broken: false,
+            anomaly: false,
             totals: FillTotals::default(),
         };
         Ok((runner, operational.plus(treasury)))
@@ -70,8 +85,14 @@ impl OrderRunner {
         self.ledger_broken
     }
 
-    pub fn reset_failures(&mut self) {
+    pub fn anomaly(&self) -> bool {
+        self.anomaly
+    }
+
+    /// An operator looked: past failures and anomalies are acknowledged.
+    pub fn acknowledge(&mut self) {
         self.consecutive_failures = 0;
+        self.anomaly = false;
     }
 
     pub fn observe(&mut self, market: &MarketSnapshot, outcome: &mut ExecutionOutcome) {
@@ -99,7 +120,28 @@ impl OrderRunner {
             .map_err(|error| self.fail(error, outcome))
     }
 
-    /// Gate, execute and book one order; the fill when it went through.
+    /// Swaps `units` of `sell` at market with a minimum out derived from spot.
+    pub fn swap(
+        &mut self,
+        wallet: Wallet,
+        sell: Asset,
+        units: u128,
+        market: &MarketSnapshot,
+        outcome: &mut ExecutionOutcome,
+    ) -> Option<Fill> {
+        let min_received = self
+            .guards
+            .min_received(self.scale, sell, units, market.spot_price);
+        let order = VenueOrder::Swap {
+            wallet,
+            sell,
+            units,
+            min_received,
+        };
+        self.run(order, market, outcome)
+    }
+
+    /// Gate, guard, execute and book one order; the fill when it went through.
     pub fn run(
         &mut self,
         order: VenueOrder,
@@ -117,14 +159,24 @@ impl OrderRunner {
             outcome.orders.push(OrderResult::Blocked(breach));
             return None;
         }
-        match self.venue.execute(&order, market) {
+        if !self.send_orders {
+            outcome
+                .orders
+                .push(OrderResult::Withheld(order.withheld_label()));
+            return None;
+        }
+        let guard = self.guards.next_guard(market);
+        match self.venue.execute(&order, &guard, market) {
             Ok(fill) => {
                 self.consecutive_failures = 0;
+                self.anomaly |= !fill_check::consistent(&order, &guard, &fill);
                 self.totals.add(
                     self.scale.to_amount(Asset::Quote, fill.fees_claimed),
                     self.scale.to_amount(Asset::Quote, fill.action_cost),
                     fill.swap_cost_quote,
                 );
+                // Book what happened even when it looks wrong: the ledger must
+                // follow the venue, and the anomaly alert stops further orders.
                 if booking::book(&mut self.ledger, market.timestamp, &order, &fill).is_err() {
                     self.ledger_broken = true;
                 }
