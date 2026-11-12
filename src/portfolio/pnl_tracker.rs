@@ -1,5 +1,6 @@
-//! Marks equity every snapshot, accumulates fees and costs, and watches the
-//! loss limits. Unclaimed fees are reported apart from cash, never mixed in.
+//! Marks equity every snapshot and watches the loss limits. Fee and cost
+//! totals come from the order runner, which sees every fill. Unclaimed fees
+//! are reported apart from cash, never mixed in.
 
 use crate::config::execution_sections::RiskConfig;
 
@@ -8,9 +9,9 @@ const SECONDS_PER_DAY: u64 = 86_400;
 /// Books at one moment, all in quote.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BooksSnapshot {
-    /// Wallets plus band position plus unclaimed fees, at spot.
+    /// Wallets plus band position plus unclaimed fees, at the valuation price.
     pub equity: f64,
-    /// The starting holdings, untouched, valued at the same spot.
+    /// The starting holdings, untouched, valued at the same price.
     pub hold_equity: f64,
     pub unclaimed_fees: f64,
     pub fees_claimed: f64,
@@ -20,14 +21,27 @@ pub struct BooksSnapshot {
     pub worst_drawdown: f64,
 }
 
+/// Running totals over every fill, in quote.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FillTotals {
+    pub fees_claimed: f64,
+    pub action_costs: f64,
+    pub swap_costs: f64,
+}
+
+impl FillTotals {
+    pub fn add(&mut self, fees_claimed: f64, action_cost: f64, swap_cost: f64) {
+        self.fees_claimed += fees_claimed;
+        self.action_costs += action_cost;
+        self.swap_costs += swap_cost;
+    }
+}
+
 pub struct PnlTracker {
     max_daily_loss_quote: f64,
     max_drawdown: f64,
     peak_equity: f64,
     day_open: Option<(u64, f64)>,
-    fees_claimed: f64,
-    action_costs: f64,
-    swap_costs: f64,
     worst_drawdown: f64,
 }
 
@@ -38,17 +52,8 @@ impl PnlTracker {
             max_drawdown: risk.max_drawdown,
             peak_equity: 0.0,
             day_open: None,
-            fees_claimed: 0.0,
-            action_costs: 0.0,
-            swap_costs: 0.0,
             worst_drawdown: 0.0,
         }
-    }
-
-    pub fn record_fill(&mut self, fees_claimed: f64, action_cost: f64, swap_cost: f64) {
-        self.fees_claimed += fees_claimed;
-        self.action_costs += action_cost;
-        self.swap_costs += swap_cost;
     }
 
     /// Marks equity at `timestamp`; `true` when a loss limit is breached.
@@ -62,7 +67,11 @@ impl PnlTracker {
             }
         };
         self.peak_equity = self.peak_equity.max(equity);
-        let drawdown = 1.0 - equity / self.peak_equity;
+        let drawdown = if self.peak_equity > 0.0 {
+            1.0 - equity / self.peak_equity
+        } else {
+            0.0
+        };
         self.worst_drawdown = self.worst_drawdown.max(drawdown);
         drawdown > self.max_drawdown || day_open_equity - equity > self.max_daily_loss_quote
     }
@@ -74,14 +83,20 @@ impl PnlTracker {
         self.day_open = None;
     }
 
-    pub fn snapshot(&self, equity: f64, hold_equity: f64, unclaimed_fees: f64) -> BooksSnapshot {
+    pub fn snapshot(
+        &self,
+        equity: f64,
+        hold_equity: f64,
+        unclaimed_fees: f64,
+        totals: FillTotals,
+    ) -> BooksSnapshot {
         BooksSnapshot {
             equity,
             hold_equity,
             unclaimed_fees,
-            fees_claimed: self.fees_claimed,
-            action_costs: self.action_costs,
-            swap_costs: self.swap_costs,
+            fees_claimed: totals.fees_claimed,
+            action_costs: totals.action_costs,
+            swap_costs: totals.swap_costs,
             worst_drawdown: self.worst_drawdown,
         }
     }
@@ -89,7 +104,7 @@ impl PnlTracker {
 
 #[cfg(test)]
 mod tests {
-    use super::PnlTracker;
+    use super::{FillTotals, PnlTracker};
     use crate::config::execution_sections::RiskConfig;
 
     fn tracker() -> PnlTracker {
@@ -121,7 +136,11 @@ mod tests {
         assert!(!tracker.mark(2 * 86_400, 1_250.0));
         assert!(tracker.mark(3 * 86_400, 1_190.0));
         assert!(
-            (tracker.snapshot(0.0, 0.0, 0.0).worst_drawdown - (1.0 - 1_190.0 / 1_500.0)).abs()
+            (tracker
+                .snapshot(0.0, 0.0, 0.0, FillTotals::default())
+                .worst_drawdown
+                - (1.0 - 1_190.0 / 1_500.0))
+                .abs()
                 < 1e-12
         );
     }

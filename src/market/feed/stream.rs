@@ -12,6 +12,8 @@ pub type SnapshotStream = Box<dyn Iterator<Item = Result<MarketSnapshot, AppErro
 pub struct MarketFeed {
     pub name: String,
     pub snapshots: SnapshotStream,
+    /// Live feeds only: how far from the wall clock a snapshot may be.
+    pub clock_window_secs: Option<u64>,
 }
 
 pub fn open_feeds(config: &FeedConfig) -> Result<Vec<MarketFeed>, AppError> {
@@ -22,6 +24,6 @@ pub fn open_feeds(config: &FeedConfig) -> Result<Vec<MarketFeed>, AppError> {
             .map(|kind| generator::feed(*kind, settings))
             .collect()),
         FeedConfig::Jsonl(settings) => Ok(vec![jsonl::open(&settings.path)?]),
-        FeedConfig::Stdin => Ok(vec![jsonl::stdin()]),
+        FeedConfig::Stdin(settings) => Ok(vec![jsonl::stdin(settings.max_snapshot_age_secs)]),
     }
 }

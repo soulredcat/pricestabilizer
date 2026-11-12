@@ -18,6 +18,7 @@ pub fn feed(kind: ScenarioKind, settings: &ScenarioFeedConfig) -> MarketFeed {
     MarketFeed {
         name: kind.name().to_owned(),
         snapshots: Box::new(ScenarioGenerator::new(kind, settings).map(Ok)),
+        clock_window_secs: None,
     }
 }
 

@@ -1,6 +1,7 @@
 //! Reads operator commands from a JSON-lines file. The file is followed like
 //! a log: lines appended while the engine runs arrive on the next snapshot,
-//! and a command takes effect once a snapshot reaches its `at` time.
+//! and a command takes effect once a snapshot reaches its `at` time. Lines
+//! that do not parse are reported on stderr and skipped.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -66,12 +67,15 @@ impl CommandInbox {
             if line.trim().is_empty() {
                 continue;
             }
-            let scheduled = serde_json::from_str(&line).map_err(|source| AppError::FeedParse {
-                path: path.clone(),
-                line: self.lines_read,
-                source,
-            })?;
-            self.queued.push(scheduled);
+            // A typo must not stop a live engine: report it and read on.
+            match serde_json::from_str(&line) {
+                Ok(scheduled) => self.queued.push(scheduled),
+                Err(error) => eprintln!(
+                    "[operator] ignored {} line {}: {error}",
+                    path.display(),
+                    self.lines_read
+                ),
+            }
         }
     }
 }

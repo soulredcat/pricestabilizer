@@ -2,9 +2,13 @@
 //! books every fill and reconciles the books with the venue.
 
 pub mod band_funding;
+pub mod band_mover;
 pub mod booking;
 pub mod executor;
+pub mod inspection;
+pub mod order_runner;
 pub mod outcome;
+pub mod request;
 pub mod risk_gate;
 
 #[cfg(test)]

@@ -27,11 +27,6 @@ pub enum AppError {
         line: usize,
         source: serde_json::Error,
     },
-    SnapshotInvalid {
-        feed: String,
-        index: usize,
-        reason: String,
-    },
     VenueUnavailable {
         feed: String,
         reason: &'static str,
@@ -61,11 +56,6 @@ impl fmt::Display for AppError {
             Self::FeedParse { path, line, source } => {
                 write!(f, "feed {} line {line}: {source}", path.display())
             }
-            Self::SnapshotInvalid {
-                feed,
-                index,
-                reason,
-            } => write!(f, "feed {feed}, snapshot #{index}: {reason}"),
             Self::VenueUnavailable { feed, reason } => {
                 write!(f, "feed {feed}: venue unavailable ({reason})")
             }

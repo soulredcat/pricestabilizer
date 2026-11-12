@@ -19,19 +19,27 @@ pub fn open(path: &Path) -> Result<MarketFeed, AppError> {
         path.display().to_string(),
         path.to_path_buf(),
         BufReader::new(file),
+        None,
     ))
 }
 
-/// Snapshots piped in by a connector, processed as each line arrives.
-pub fn stdin() -> MarketFeed {
+/// Snapshots piped in live by a connector, processed as each line arrives
+/// and refused when further than `max_age_secs` from the wall clock.
+pub fn stdin(max_age_secs: u64) -> MarketFeed {
     from_reader(
         "stdin".to_owned(),
         PathBuf::from("<stdin>"),
         io::stdin().lock(),
+        Some(max_age_secs),
     )
 }
 
-fn from_reader(name: String, origin: PathBuf, reader: impl BufRead + 'static) -> MarketFeed {
+fn from_reader(
+    name: String,
+    origin: PathBuf,
+    reader: impl BufRead + 'static,
+    clock_window_secs: Option<u64>,
+) -> MarketFeed {
     let snapshots = reader
         .lines()
         .enumerate()
@@ -40,6 +48,7 @@ fn from_reader(name: String, origin: PathBuf, reader: impl BufRead + 'static) ->
     MarketFeed {
         name,
         snapshots: Box::new(snapshots),
+        clock_window_secs,
     }
 }
 

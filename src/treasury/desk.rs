@@ -81,17 +81,24 @@ impl TreasuryDesk {
         None
     }
 
-    /// Records how an executed proposal went; it is closed either way.
-    pub fn settle(&mut self, proposal: Proposal, filled: bool, events: &mut Vec<TreasuryEvent>) {
+    /// Records how an executed proposal went, counting the quote actually
+    /// spent against the budget; the proposal is closed either way.
+    pub fn settle(
+        &mut self,
+        proposal: Proposal,
+        spent: Option<f64>,
+        events: &mut Vec<TreasuryEvent>,
+    ) {
         self.clear();
-        if filled {
-            self.spent += proposal.quote;
-            events.push(TreasuryEvent::Executed {
-                id: proposal.id,
-                quote: proposal.quote,
-            });
-        } else {
-            events.push(TreasuryEvent::NotFilled(proposal.id));
+        match spent {
+            Some(quote) => {
+                self.spent += quote;
+                events.push(TreasuryEvent::Executed {
+                    id: proposal.id,
+                    quote,
+                });
+            }
+            None => events.push(TreasuryEvent::NotFilled(proposal.id)),
         }
     }
 
@@ -159,7 +166,7 @@ mod tests {
         let proposal = desk
             .on_tick(20, REVIEW, true, &mut events)
             .expect("executable");
-        desk.settle(proposal, true, &mut events);
+        desk.settle(proposal, Some(proposal.quote), &mut events);
         desk.on_tick(200, REVIEW, true, &mut events);
         assert_eq!(events.last(), Some(&TreasuryEvent::Proposed(2)));
         let second = desk.on_tick(201, REVIEW, true, &mut Vec::new());

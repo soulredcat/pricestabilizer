@@ -1,5 +1,7 @@
 //! Builds the configured venue.
 
+use std::time::Duration;
+
 use crate::config::engine_config::EngineConfig;
 use crate::config::venue_section::VenueConfig;
 use crate::portfolio::asset::UnitScale;
@@ -18,6 +20,9 @@ pub fn open_venue(config: &EngineConfig) -> Result<Box<dyn Venue>, VenueError> {
                 scale,
             )))
         }
-        VenueConfig::External(settings) => Ok(Box::new(ProcessVenue::spawn(&settings.command)?)),
+        VenueConfig::External(settings) => Ok(Box::new(ProcessVenue::spawn(
+            &settings.command,
+            Duration::from_secs(settings.timeout_secs),
+        )?)),
     }
 }

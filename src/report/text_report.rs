@@ -32,6 +32,7 @@ pub fn render(summary: &RunSummary) -> String {
         shares(&summary.modes, summary.ticks)
     ));
     lines.push(format!("  price flags  {}", counts(&summary.price_issues)));
+    lines.push(format!("  skipped      {}", counts(&summary.skipped)));
     lines.push(format!("  liquidity    {}", counts(&summary.liquidity)));
     lines.push(format!("  band         {}", band_line(summary)));
     lines.push(format!("  orders       {}", counts(&summary.orders)));

@@ -10,6 +10,7 @@ use crate::engine::strategy::feedback::ExecutionFeedback;
 use crate::engine::strategy::pipeline::StrategyPipeline;
 use crate::execution::executor::Executor;
 use crate::execution::outcome::ExecutionOutcome;
+use crate::execution::request::ExecutionRequest;
 use crate::market::snapshot::MarketSnapshot;
 use crate::operator::command::{OperatorCommand, OperatorEvent};
 use crate::operator::inbox::CommandInbox;
@@ -94,14 +95,15 @@ impl TradingSession {
             decision.price.is_trusted(),
             &mut treasury_events,
         );
-        let outcome = self.executor.on_decision(
-            snapshot,
-            decision.liquidity,
-            buy.map(|proposal| proposal.quote),
-        );
+        let request = ExecutionRequest {
+            action: decision.liquidity,
+            treasury_buy_quote: buy.map(|proposal| proposal.quote),
+            valuation_price: decision.price.twap,
+        };
+        let outcome = self.executor.on_decision(snapshot, &request);
         if let Some(proposal) = buy {
             self.treasury
-                .settle(proposal, outcome.treasury_filled, &mut treasury_events);
+                .settle(proposal, outcome.treasury_spent, &mut treasury_events);
         }
         events.extend(treasury_events.into_iter().map(TickEvent::Treasury));
         self.feedback = outcome.feedback;

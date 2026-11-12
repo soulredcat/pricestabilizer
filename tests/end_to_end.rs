@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const EXAMPLE: &str = include_str!("../config/simulation.example.toml");
 const BINARY: &str = env!("CARGO_BIN_EXE_pricestabilizer");
@@ -66,7 +67,7 @@ fn run(config: &PathBuf, stdin: &str) -> String {
 fn paper_connector_over_the_protocol_matches_the_in_process_venue() {
     let paper = write_config("pricestabilizer-e2e-paper.toml", &config_with("[none]", ""));
     let connector = format!(
-        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]",
+        "[venue]\nkind = \"external\"\ncommand = [{:?}, \"paper-connector\", {:?}]\ntimeout_secs = 30",
         BINARY,
         paper.display().to_string()
     );
@@ -83,16 +84,34 @@ fn paper_connector_over_the_protocol_matches_the_in_process_venue() {
 fn snapshots_piped_on_stdin_are_traded_live() {
     let config = write_config(
         "pricestabilizer-e2e-stdin.toml",
-        &config_with("[feed]", "[feed]\nsource = \"stdin\""),
+        &config_with(
+            "[feed]",
+            "[feed]\nsource = \"stdin\"\nmax_snapshot_age_secs = 600",
+        ),
     );
-    let snapshots: String = (0..3)
-        .map(|step| {
-            format!(
-                "{{\"timestamp\": {}, \"spot_price\": 1.0, \"quote_depth\": 50000.0, \"quote_volume\": 200.0, \"quote_usd_price\": 1.0}}\n",
-                1_767_225_600 + step * 300
-            )
-        })
-        .collect();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after 1970")
+        .as_secs();
+    let line = |timestamp: u64| {
+        format!(
+            "{{\"timestamp\": {timestamp}, \"spot_price\": 1.0, \"quote_depth\": 50000.0, \"quote_volume\": 200.0, \"quote_usd_price\": 1.0}}\n"
+        )
+    };
+    // Three live snapshots, one stale and one garbled line: the last two are
+    // skipped and counted, never acted on.
+    let snapshots = [
+        line(now - 120),
+        line(now - 60),
+        line(now - 86_400),
+        "{not json}\n".to_owned(),
+        line(now),
+    ]
+    .concat();
     let output = run(&config, &snapshots);
     assert!(output.starts_with("== stdin == 3 ticks"), "{output}");
+    assert!(
+        output.contains("skipped      invalid_json 1, out_of_order 1"),
+        "{output}"
+    );
 }

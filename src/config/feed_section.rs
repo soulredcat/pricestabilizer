@@ -14,7 +14,14 @@ pub enum FeedConfig {
     /// Snapshots written by an external connector, one JSON object per line.
     Jsonl(JsonlFeedConfig),
     /// The same format piped in live on standard input.
-    Stdin,
+    Stdin(StdinFeedConfig),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StdinFeedConfig {
+    /// Snapshots further than this from the wall clock are skipped.
+    pub max_snapshot_age_secs: u64,
 }
 
 #[derive(Debug, Deserialize)]

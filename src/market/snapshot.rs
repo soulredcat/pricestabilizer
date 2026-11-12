@@ -1,5 +1,7 @@
 //! The one market shape the engine understands.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// One observation of a TOKEN/QUOTE market on any venue: an AMM pool, a
@@ -20,41 +22,73 @@ pub struct MarketSnapshot {
     pub quote_usd_price: f64,
 }
 
+/// Why a snapshot was refused. Refused snapshots are skipped, never acted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotDefect {
+    /// Not strictly after the previous accepted snapshot.
+    OutOfOrder,
+    /// This field is negative, not finite, or zero where it must be positive.
+    InvalidValue(&'static str),
+    /// Too far from the wall clock for a live feed: stale data, or a unit
+    /// mix-up such as milliseconds instead of seconds.
+    OutsideClockWindow,
+}
+
+impl SnapshotDefect {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::OutOfOrder => "out_of_order",
+            Self::InvalidValue(_) => "invalid_value",
+            Self::OutsideClockWindow => "outside_clock_window",
+        }
+    }
+}
+
+impl fmt::Display for SnapshotDefect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OutOfOrder => write!(f, "timestamp is not after the previous snapshot"),
+            Self::InvalidValue(field) => write!(f, "{field} is out of range"),
+            Self::OutsideClockWindow => write!(f, "timestamp is too far from the wall clock"),
+        }
+    }
+}
+
 impl MarketSnapshot {
     /// Rejects values the engine must never reason about.
-    pub fn validate(&self, previous_timestamp: Option<u64>) -> Result<(), String> {
+    pub fn validate(&self, previous_timestamp: Option<u64>) -> Result<(), SnapshotDefect> {
         if previous_timestamp.is_some_and(|previous| self.timestamp <= previous) {
-            return Err(format!(
-                "timestamp {} is not after the previous snapshot",
-                self.timestamp
-            ));
+            return Err(SnapshotDefect::OutOfOrder);
         }
-        positive("spot_price", self.spot_price)?;
-        positive("quote_usd_price", self.quote_usd_price)?;
-        non_negative("quote_depth", self.quote_depth)?;
-        non_negative("quote_volume", self.quote_volume)
+        let positive = |value: f64| value.is_finite() && value > 0.0;
+        let non_negative = |value: f64| value.is_finite() && value >= 0.0;
+        [
+            ("spot_price", positive(self.spot_price)),
+            ("quote_usd_price", positive(self.quote_usd_price)),
+            ("quote_depth", non_negative(self.quote_depth)),
+            ("quote_volume", non_negative(self.quote_volume)),
+        ]
+        .into_iter()
+        .find(|(_, valid)| !valid)
+        .map_or(Ok(()), |(field, _)| {
+            Err(SnapshotDefect::InvalidValue(field))
+        })
     }
-}
 
-fn positive(field: &str, value: f64) -> Result<(), String> {
-    if value.is_finite() && value > 0.0 {
-        Ok(())
-    } else {
-        Err(format!("{field} must be positive and finite, got {value}"))
-    }
-}
-
-fn non_negative(field: &str, value: f64) -> Result<(), String> {
-    if value.is_finite() && value >= 0.0 {
-        Ok(())
-    } else {
-        Err(format!("{field} must be finite and >= 0, got {value}"))
+    /// Live feeds only: the snapshot must lie within `max_age_secs` of `now`,
+    /// in either direction.
+    pub fn check_clock(&self, now: u64, max_age_secs: u64) -> Result<(), SnapshotDefect> {
+        if now.abs_diff(self.timestamp) <= max_age_secs {
+            Ok(())
+        } else {
+            Err(SnapshotDefect::OutsideClockWindow)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::MarketSnapshot;
+    use super::{MarketSnapshot, SnapshotDefect};
 
     fn snapshot(timestamp: u64, spot_price: f64) -> MarketSnapshot {
         MarketSnapshot {
@@ -73,12 +107,24 @@ mod tests {
 
     #[test]
     fn rejects_time_going_backwards() {
-        assert!(snapshot(10, 1.5).validate(Some(10)).is_err());
+        assert_eq!(
+            snapshot(10, 1.5).validate(Some(10)),
+            Err(SnapshotDefect::OutOfOrder)
+        );
     }
 
     #[test]
     fn rejects_non_positive_price() {
-        assert!(snapshot(10, 0.0).validate(None).is_err());
-        assert!(snapshot(10, f64::NAN).validate(None).is_err());
+        let refused = Err(SnapshotDefect::InvalidValue("spot_price"));
+        assert_eq!(snapshot(10, 0.0).validate(None), refused);
+        assert_eq!(snapshot(10, f64::NAN).validate(None), refused);
+    }
+
+    #[test]
+    fn live_snapshots_must_sit_near_the_wall_clock() {
+        assert!(snapshot(1_000, 1.0).check_clock(1_100, 120).is_ok());
+        assert!(snapshot(1_000, 1.0).check_clock(1_200, 120).is_err());
+        // Milliseconds sent as seconds land far in the future.
+        assert!(snapshot(1_000_000, 1.0).check_clock(1_000, 120).is_err());
     }
 }

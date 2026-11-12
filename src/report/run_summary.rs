@@ -43,6 +43,8 @@ pub struct RunSummary {
     pub books: Option<BooksSnapshot>,
     /// Operator and treasury events by label.
     pub events: Counter,
+    /// Refused input by reason; none of it was acted on.
+    pub skipped: Counter,
     pub treasury_spent: f64,
 }
 
@@ -52,6 +54,10 @@ impl RunSummary {
             feed_name,
             ..Self::default()
         }
+    }
+
+    pub fn skip(&mut self, reason: &'static str) {
+        bump(&mut self.skipped, reason);
     }
 
     pub fn record(&mut self, snapshot: &MarketSnapshot, report: &TickReport) {

@@ -9,6 +9,7 @@ use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
 use crate::engine::liquidity::price_band::PriceBand;
 use crate::engine::regime::market_regime::EmergencyCause;
 use crate::execution::executor::Executor;
+use crate::execution::request::ExecutionRequest;
 use crate::market::snapshot::MarketSnapshot;
 use crate::portfolio::holding::Holding;
 use crate::venue::adapter::Venue;
@@ -28,6 +29,18 @@ fn market(timestamp: u64, spot_price: f64) -> MarketSnapshot {
         quote_depth: 50_000.0,
         quote_volume: 400.0,
         quote_usd_price: 1.0,
+    }
+}
+
+fn request(
+    action: LiquidityAction,
+    treasury_buy_quote: Option<f64>,
+    price: f64,
+) -> ExecutionRequest {
+    ExecutionRequest {
+        action,
+        treasury_buy_quote,
+        valuation_price: price,
     }
 }
 
@@ -61,16 +74,22 @@ fn opening_and_moving_a_band_keeps_the_books_reconciled() {
     let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let open = executor.on_decision(
         &market(1, 1.0),
-        LiquidityAction::Open(PriceBand::around(1.0, 0.05)),
-        None,
+        &request(
+            LiquidityAction::Open(PriceBand::around(1.0, 0.05)),
+            None,
+            1.0,
+        ),
     );
     assert!(open.feedback.band_held);
     assert_eq!(open.feedback.alert, None);
 
     let moved = executor.on_decision(
         &market(2, 1.08),
-        LiquidityAction::Reposition(PriceBand::around(1.08, 0.05)),
-        None,
+        &request(
+            LiquidityAction::Reposition(PriceBand::around(1.08, 0.05)),
+            None,
+            1.08,
+        ),
     );
     let labels: Vec<_> = moved.orders.iter().map(|order| order.label()).collect();
     assert_eq!(labels.first(), Some(&"remove_band"));
@@ -126,8 +145,7 @@ fn orders_never_ask_for_more_units_than_the_wallet_holds() {
     };
     executor.on_decision(
         &market(1, 0.045_775_623_848_488_815),
-        LiquidityAction::Open(band),
-        None,
+        &request(LiquidityAction::Open(band), None, 0.045_775_623_848_488_815),
     );
     let recorded = orders.borrow();
     assert!(
@@ -155,8 +173,7 @@ fn holding_places_no_orders() {
     let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
-        LiquidityAction::Hold(HoldReason::InBand),
-        None,
+        &request(LiquidityAction::Hold(HoldReason::InBand), None, 1.0),
     );
     assert!(outcome.orders.is_empty());
     assert!(outcome.books.is_some());
@@ -168,10 +185,9 @@ fn approved_treasury_buy_spends_treasury_quote_only() {
     let mut executor = Executor::open(&config, open_venue(&config).expect("venue")).expect("opens");
     let outcome = executor.on_decision(
         &market(1, 1.0),
-        LiquidityAction::Hold(HoldReason::InBand),
-        Some(250.0),
+        &request(LiquidityAction::Hold(HoldReason::InBand), Some(250.0), 1.0),
     );
-    assert!(outcome.treasury_filled);
+    assert_eq!(outcome.treasury_spent, Some(250.0));
     assert_eq!(
         outcome.feedback.alert, None,
         "treasury booked and reconciled"
@@ -192,7 +208,7 @@ fn repeated_venue_failures_raise_an_alert() {
     let alerts: Vec<_> = (0..3)
         .map(|tick| {
             executor
-                .on_decision(&market(tick, 1.0), open, None)
+                .on_decision(&market(tick, 1.0), &request(open, None, 1.0))
                 .feedback
                 .alert
         })

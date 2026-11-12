@@ -16,6 +16,8 @@ pub enum VenueConfig {
 pub struct ExternalVenueConfig {
     /// Program and arguments, for example `["node", "connector.js"]`.
     pub command: Vec<String>,
+    /// A call unanswered after this long counts as a connector failure.
+    pub timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
