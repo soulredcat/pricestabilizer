@@ -1,0 +1,60 @@
+//! The single error type surfaced to the command line.
+
+use std::fmt;
+use std::io;
+use std::path::PathBuf;
+
+#[derive(Debug)]
+pub enum AppError {
+    ConfigRead {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ConfigParse {
+        path: PathBuf,
+        source: Box<toml::de::Error>,
+    },
+    ConfigInvalid {
+        field: &'static str,
+        rule: &'static str,
+    },
+    FeedRead {
+        path: PathBuf,
+        source: io::Error,
+    },
+    FeedParse {
+        path: PathBuf,
+        line: usize,
+        source: serde_json::Error,
+    },
+    SnapshotInvalid {
+        feed: String,
+        index: usize,
+        reason: String,
+    },
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConfigRead { path, source } => {
+                write!(f, "cannot read config {}: {source}", path.display())
+            }
+            Self::ConfigParse { path, source } => {
+                write!(f, "invalid config {}: {source}", path.display())
+            }
+            Self::ConfigInvalid { field, rule } => write!(f, "config field `{field}` {rule}"),
+            Self::FeedRead { path, source } => {
+                write!(f, "cannot read feed {}: {source}", path.display())
+            }
+            Self::FeedParse { path, line, source } => {
+                write!(f, "feed {} line {line}: {source}", path.display())
+            }
+            Self::SnapshotInvalid {
+                feed,
+                index,
+                reason,
+            } => write!(f, "feed {feed}, snapshot #{index}: {reason}"),
+        }
+    }
+}

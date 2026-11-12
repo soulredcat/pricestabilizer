@@ -1,0 +1,57 @@
+# Example engine configuration: replays every built-in stress scenario.
+#
+# These thresholds are UNCALIBRATED starting points for simulation only.
+# Before any live use, every value must be derived from backtests on the
+# target market, reviewed and approved.
+#
+# Run: cargo run --release -- config/simulation.example.toml
+
+[growth]
+initial_price = 1.0
+weekly_growth = 0.01            # benchmark line only, never a buy order
+start_timestamp = 1767225600    # 2026-01-01T00:00:00Z
+
+[price]
+twap_window_secs = 3600
+max_sample_gap_secs = 900
+min_quote_depth = 5000.0
+min_window_quote_volume = 100.0
+max_spot_twap_deviation = 0.05
+
+[regime]
+window_secs = 86400
+trend_threshold = 0.03
+high_daily_volatility = 0.10
+extreme_move = 0.15
+quote_peg_usd = 1.0
+depeg_threshold = 0.02
+max_depth_drop = 0.5
+
+[liquidity]
+range_sigmas = 2.0
+range_horizon_days = 1.0
+min_half_width = 0.02
+max_half_width = 0.25
+width_tolerance = 0.3
+min_reposition_interval_secs = 3600
+
+[feed]
+source = "scenario"
+scenarios = [
+    "steady_bull",
+    "steady_bear",
+    "sideways",
+    "flash_crash",
+    "pump_retrace",
+    "low_liquidity",
+    "liquidity_exit",
+    "liquidity_inflow",
+    "stable_depeg",
+    "data_gap",
+]
+seed = 7
+steps = 2016                    # 7 days of 5-minute snapshots
+interval_secs = 300
+start_timestamp = 1767225600
+start_price = 1.0
+start_quote_depth = 50000.0

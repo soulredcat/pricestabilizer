@@ -1,0 +1,8 @@
+/target
+
+# Editor / assistant working folders
+.claude/
+
+# Local-only experiments against a concrete chain (connectors, configs, data).
+# The published engine stays chain-agnostic: nothing in here is ever pushed.
+/local/
