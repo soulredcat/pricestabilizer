@@ -29,6 +29,9 @@ pub struct PriceConfig {
     pub min_window_quote_volume: f64,
     /// Maximum relative gap between spot and TWAP.
     pub max_spot_twap_deviation: f64,
+    /// Feed convention: `quote_depth` is the quote liquidity that moves the
+    /// price by this fraction (0.02 = depth within a 2% move).
+    pub depth_reference_move: f64,
 }
 
 /// Market regime thresholds.
@@ -67,4 +70,10 @@ pub struct LiquidityConfig {
     pub width_tolerance: f64,
     /// Minimum time between two range changes.
     pub min_reposition_interval_secs: u64,
+    /// Share of operational wallet value placed in the band; it scales with
+    /// the capital actually available.
+    pub band_capital_share: f64,
+    /// Inventory gaps smaller than this share of the band budget are not
+    /// worth a rebalancing swap.
+    pub rebalance_tolerance: f64,
 }

@@ -1,4 +1,5 @@
-# Example engine configuration: replays every built-in stress scenario.
+# Example engine configuration: replays every built-in stress scenario
+# against the paper venue.
 #
 # These thresholds are UNCALIBRATED starting points for simulation only.
 # Before any live use, every value must be derived from backtests on the
@@ -17,6 +18,7 @@ max_sample_gap_secs = 900
 min_quote_depth = 5000.0
 min_window_quote_volume = 100.0
 max_spot_twap_deviation = 0.05
+depth_reference_move = 0.02     # quote_depth = liquidity within a 2% move
 
 [regime]
 window_secs = 86400
@@ -34,6 +36,31 @@ min_half_width = 0.02
 max_half_width = 0.25
 width_tolerance = 0.3
 min_reposition_interval_secs = 3600
+band_capital_share = 0.45       # ~4,000 of ~9,000 operational value
+rebalance_tolerance = 0.02
+
+[assets]
+token_decimals = 9
+quote_decimals = 6
+
+[risk]
+max_swap_quote = 2500.0
+max_slippage = 0.01
+min_quote_reserve = 1500.0
+max_token_exposure_quote = 9000.0
+max_daily_loss_quote = 900.0
+max_drawdown = 0.15
+max_consecutive_failures = 3
+
+[venue]
+kind = "simulated"
+fee_rate = 0.003
+swap_fee_rate = 0.003
+action_cost_quote = 0.25
+operational_token = 4000.0      # 2,000 free inventory + ~2,000 for the band
+operational_quote = 5000.0      # 3,000 reserve + ~2,000 for the band
+treasury_token = 0.0
+treasury_quote = 1000.0
 
 [feed]
 source = "scenario"
@@ -55,3 +82,6 @@ interval_secs = 300
 start_timestamp = 1767225600
 start_price = 1.0
 start_quote_depth = 50000.0
+
+[report]
+ledger_dir = "target/ledgers"

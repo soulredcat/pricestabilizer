@@ -17,6 +17,12 @@ pub enum EmergencyCause {
     StableDepeg,
     ExtremeMove,
     DepthCollapse,
+    /// Daily loss or drawdown limit breached.
+    LossLimit,
+    /// The ledger no longer matches what the venue reports.
+    LedgerMismatch,
+    /// Too many venue orders failed in a row.
+    VenueFailures,
 }
 
 impl Regime {
@@ -38,6 +44,9 @@ impl EmergencyCause {
             Self::StableDepeg => "stable_depeg",
             Self::ExtremeMove => "extreme_move",
             Self::DepthCollapse => "depth_collapse",
+            Self::LossLimit => "loss_limit",
+            Self::LedgerMismatch => "ledger_mismatch",
+            Self::VenueFailures => "venue_failures",
         }
     }
 }

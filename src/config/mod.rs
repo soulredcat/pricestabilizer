@@ -3,5 +3,8 @@
 
 pub mod engine_config;
 pub mod engine_sections;
+pub mod execution_sections;
 pub mod feed_section;
+pub mod report_section;
 pub mod validation;
+pub mod venue_section;

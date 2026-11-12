@@ -32,6 +32,14 @@ pub enum AppError {
         index: usize,
         reason: String,
     },
+    VenueUnavailable {
+        feed: String,
+        reason: &'static str,
+    },
+    LedgerExport {
+        path: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl fmt::Display for AppError {
@@ -55,6 +63,12 @@ impl fmt::Display for AppError {
                 index,
                 reason,
             } => write!(f, "feed {feed}, snapshot #{index}: {reason}"),
+            Self::VenueUnavailable { feed, reason } => {
+                write!(f, "feed {feed}: venue unavailable ({reason})")
+            }
+            Self::LedgerExport { path, source } => {
+                write!(f, "cannot write ledger {}: {source}", path.display())
+            }
         }
     }
 }

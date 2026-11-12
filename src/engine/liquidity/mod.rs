@@ -4,4 +4,5 @@
 
 pub mod action;
 pub mod band_keeper;
+pub mod band_math;
 pub mod price_band;

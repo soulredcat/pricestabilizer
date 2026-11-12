@@ -7,7 +7,10 @@ use serde::Deserialize;
 
 use crate::app::error::AppError;
 use crate::config::engine_sections::{GrowthConfig, LiquidityConfig, PriceConfig, RegimeConfig};
+use crate::config::execution_sections::{AssetsConfig, RiskConfig};
 use crate::config::feed_section::FeedConfig;
+use crate::config::report_section::ReportConfig;
+use crate::config::venue_section::VenueConfig;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,7 +19,12 @@ pub struct EngineConfig {
     pub price: PriceConfig,
     pub regime: RegimeConfig,
     pub liquidity: LiquidityConfig,
+    pub assets: AssetsConfig,
+    pub risk: RiskConfig,
+    pub venue: VenueConfig,
     pub feed: FeedConfig,
+    #[serde(default)]
+    pub report: ReportConfig,
 }
 
 impl EngineConfig {

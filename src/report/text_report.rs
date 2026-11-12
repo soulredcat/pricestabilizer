@@ -34,6 +34,8 @@ pub fn render(summary: &RunSummary) -> String {
     lines.push(format!("  price flags  {}", counts(&summary.price_issues)));
     lines.push(format!("  liquidity    {}", counts(&summary.liquidity)));
     lines.push(format!("  band         {}", band_line(summary)));
+    lines.push(format!("  orders       {}", counts(&summary.orders)));
+    lines.push(format!("  books        {}", books_line(summary)));
     lines.push(format!("  protection   {}", protection_line(summary)));
     lines.join("\n")
 }
@@ -71,6 +73,23 @@ fn band_line(summary: &RunSummary) -> String {
             band.lower,
             band.upper,
             summary.ticks_spot_in_band as f64 / summary.ticks_with_band as f64 * 100.0
+        ),
+    }
+}
+
+fn books_line(summary: &RunSummary) -> String {
+    match summary.books {
+        None => "never marked".to_owned(),
+        Some(books) => format!(
+            "equity {:.2} vs hold {:.2} ({:+.2}%), fees {:.2} (+{:.2} unclaimed), costs {:.2} orders + {:.2} swaps, worst drawdown {:.2}%",
+            books.equity,
+            books.hold_equity,
+            percent(books.equity / books.hold_equity - 1.0),
+            books.fees_claimed,
+            books.unclaimed_fees,
+            books.action_costs,
+            books.swap_costs,
+            percent(books.worst_drawdown),
         ),
     }
 }

@@ -8,8 +8,9 @@ latched protection mode when something abnormal happens. It never knows which
 chain or venue it is running on. Everything chain-specific lives in a connector
 outside this repository that turns its market into generic snapshots.
 
-> **Status: v0.1, shadow engine.** It produces decisions only. There is no
-> signing, no wallet and no transaction code. Every threshold in the example
+> **Status: v0.2, paper trading.** Decisions are executed against a paper
+> venue with a double-entry ledger, a risk gate and loss limits. No real
+> venue adapter ships in this repository. Every threshold in the example
 > config is an uncalibrated starting point for simulation.
 
 ## Principles
@@ -26,8 +27,11 @@ outside this repository that turns its market into generic snapshots.
 - **Separate prices.** Spot (what the market shows), TWAP reference (what
   decisions use, and only when trusted) and target (the benchmark) are never
   mixed.
-- **Protection latches.** A stablecoin depeg, an extreme single move or a depth
-  collapse trips protection, and only an operator may resume.
+- **Protection latches.** A stablecoin depeg, an extreme single move, a depth
+  collapse, a loss limit, a ledger/venue mismatch or repeated venue failures
+  trips protection, and only an operator may resume.
+- **Integer books.** The ledger is double-entry in integer base units with
+  configurable decimals, and it is reconciled with the venue every snapshot.
 
 ## Pipeline
 
@@ -35,8 +39,10 @@ outside this repository that turns its market into generic snapshots.
 snapshot ─► price assessor ─► regime classifier ─► mode controller ─► band keeper
             (TWAP + trust)    (trend, volatility,   (review / market   (open / hold /
                                emergencies)          making / protect)   reposition)
-                                                                             │
-                                                    run summary ◄── tick decision
+                                                          ▲                  │
+                                               alerts,    │                  ▼
+                                               band held  └──── executor: risk gate ─► venue
+                                                                 ledger, reconciliation, PnL
 ```
 
 ## Layout
@@ -58,8 +64,14 @@ src/
 │   ├── regime/                  market window, regime vocabulary, classifier
 │   ├── mode/                    operating modes and the latching controller
 │   ├── liquidity/               price band, liquidity intents, band keeper
-│   └── strategy/                tick decision and the per-snapshot pipeline
-└── report/                      run summary and text rendering
+│   └── strategy/                tick decision, execution feedback, pipeline
+├── execution/                   band funding, risk gate, booking, executor
+├── portfolio/                   asset units, holdings, double-entry ledger, PnL
+├── venue/
+│   ├── adapter.rs               the Venue trait every market implements
+│   ├── order.rs                 orders, fills, wallets, venue errors
+│   └── simulated/               paper venue and its band position
+└── report/                      run summary, text rendering, ledger export
 ```
 
 ## Running
@@ -95,9 +107,9 @@ volume non-negative, or the run stops with the offending line.
 
 ## Roadmap
 
-1. Inventory and ledger in integer base units (free vs. locked vs. external).
-2. Band position simulation with fees, a reposition cost gate and PnL.
-3. Risk limits (daily loss, drawdown, exposure, reserve) gating every intent.
+1. ~~Inventory and ledger in integer base units.~~ Done.
+2. ~~Band position simulation with fees, costs and PnL.~~ Done.
+3. ~~Risk limits gating every order; loss limits trip protection.~~ Done.
 4. Treasury budget and an accumulation policy behind operator approval.
 5. Venue adapter interface: quote, simulate, execute, reconcile.
 6. Operator controls: resume from protection, emergency pause.

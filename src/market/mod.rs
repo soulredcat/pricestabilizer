@@ -2,4 +2,5 @@
 //! that deliver them.
 
 pub mod feed;
+pub mod impact;
 pub mod snapshot;

@@ -6,8 +6,11 @@
 mod app;
 mod config;
 mod engine;
+mod execution;
 mod market;
+mod portfolio;
 mod report;
+mod venue;
 
 use std::path::Path;
 use std::process::ExitCode;

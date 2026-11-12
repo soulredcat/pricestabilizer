@@ -79,6 +79,7 @@ mod tests {
             min_quote_depth: 100.0,
             min_window_quote_volume: 5.0,
             max_spot_twap_deviation: 0.05,
+            depth_reference_move: 0.02,
         })
     }
 

@@ -1,7 +1,8 @@
-//! Keeps the shadow liquidity band: opens one, holds it, or moves it when the
+//! Keeps the liquidity band: opens one, holds it, or moves it when the
 //! trusted reference leaves the band or volatility calls for another width.
 //! The reference is the TWAP, not spot, so one manipulated print cannot force
-//! a costly move.
+//! a costly move. Every change, including a first open, respects the cooldown,
+//! so a venue that keeps refusing is not hammered every snapshot.
 
 use crate::config::engine_sections::LiquidityConfig;
 use crate::engine::liquidity::action::{HoldReason, LiquidityAction};
@@ -26,6 +27,12 @@ impl BandKeeper {
         self.current
     }
 
+    /// The venue holds no band (an order was blocked or failed): plan from
+    /// scratch next time.
+    pub fn forget(&mut self) {
+        self.current = None;
+    }
+
     pub fn plan(
         &mut self,
         timestamp: u64,
@@ -34,6 +41,9 @@ impl BandKeeper {
     ) -> LiquidityAction {
         let target = PriceBand::around(reference_price, self.half_width_for(daily_volatility));
         let Some(current) = self.current else {
+            if self.cooling_down(timestamp) {
+                return LiquidityAction::Hold(HoldReason::Cooldown);
+            }
             self.adopt(target, timestamp);
             return LiquidityAction::Open(target);
         };
@@ -86,6 +96,8 @@ mod tests {
             max_half_width: 0.3,
             width_tolerance: 0.3,
             min_reposition_interval_secs: 3_600,
+            band_capital_share: 0.5,
+            rebalance_tolerance: 0.02,
         })
     }
 

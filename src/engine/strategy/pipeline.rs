@@ -1,7 +1,8 @@
 //! Snapshot → price → regime → mode → liquidity intent.
 //!
-//! The pipeline runs in shadow mode: it assumes every intent it emits was
-//! carried out, and it never signs or sends anything itself.
+//! The pipeline only decides. It never signs or sends anything; the
+//! executor's feedback from the previous snapshot tells it whether its band
+//! really exists and whether the books raised an alert.
 
 use crate::config::engine_config::EngineConfig;
 use crate::engine::growth::target_curve::TargetCurve;
@@ -13,6 +14,7 @@ use crate::engine::price::assessor::PriceAssessor;
 use crate::engine::price::confidence::PriceAssessment;
 use crate::engine::regime::classifier::{RegimeClassifier, RegimeReading};
 use crate::engine::strategy::decision::TickDecision;
+use crate::engine::strategy::feedback::ExecutionFeedback;
 use crate::market::snapshot::MarketSnapshot;
 
 pub struct StrategyPipeline {
@@ -34,14 +36,23 @@ impl StrategyPipeline {
         }
     }
 
-    pub fn on_snapshot(&mut self, snapshot: &MarketSnapshot) -> TickDecision {
+    pub fn on_snapshot(
+        &mut self,
+        snapshot: &MarketSnapshot,
+        feedback: ExecutionFeedback,
+    ) -> TickDecision {
+        if !feedback.band_held {
+            self.band.forget();
+        }
         let price = self.price.assess(snapshot);
         let regime = self.regime.classify(snapshot, &price);
         let target_price = self.target_curve.price_at(snapshot.timestamp);
         let below_target = price
             .reference_price()
             .is_some_and(|reference| reference < target_price);
-        let mode = self.mode.update(regime.regime, below_target);
+        let mode = self
+            .mode
+            .update(regime.regime, below_target, feedback.alert);
         let liquidity = self.liquidity_action(snapshot.timestamp, &price, regime, mode);
         let spot_in_band = self
             .band

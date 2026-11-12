@@ -1,4 +1,4 @@
-//! Accumulates per-feed statistics from the decision stream.
+//! Accumulates per-feed statistics from decisions and their execution.
 
 use std::collections::BTreeMap;
 
@@ -6,7 +6,9 @@ use crate::engine::liquidity::action::LiquidityAction;
 use crate::engine::liquidity::price_band::PriceBand;
 use crate::engine::mode::operating_mode::OperatingMode;
 use crate::engine::strategy::decision::TickDecision;
+use crate::execution::outcome::ExecutionOutcome;
 use crate::market::snapshot::MarketSnapshot;
+use crate::portfolio::pnl_tracker::BooksSnapshot;
 
 pub type Counter = BTreeMap<&'static str, u64>;
 
@@ -35,6 +37,10 @@ pub struct RunSummary {
     pub ticks_spot_in_band: u64,
     pub latest_band: Option<PriceBand>,
     pub protection: Option<ProtectionTrip>,
+    /// Order results by label: filled order kinds, risk blocks, failures.
+    pub orders: Counter,
+    /// Books as last marked.
+    pub books: Option<BooksSnapshot>,
 }
 
 impl RunSummary {
@@ -45,7 +51,12 @@ impl RunSummary {
         }
     }
 
-    pub fn record(&mut self, snapshot: &MarketSnapshot, decision: &TickDecision) {
+    pub fn record(
+        &mut self,
+        snapshot: &MarketSnapshot,
+        decision: &TickDecision,
+        outcome: &ExecutionOutcome,
+    ) {
         if self.ticks == 0 {
             self.first_timestamp = snapshot.timestamp;
             self.first_spot = snapshot.spot_price;
@@ -82,6 +93,10 @@ impl RunSummary {
                 cause: cause.label(),
             });
         }
+        for order in &outcome.orders {
+            bump(&mut self.orders, order.label());
+        }
+        self.books = outcome.books.or(self.books);
     }
 }
 
