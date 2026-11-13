@@ -90,7 +90,12 @@ pub fn check_state(state: &StateConfig, venue: &VenueConfig) -> Result<(), AppEr
 pub fn check_treasury(treasury: &TreasuryConfig) -> Result<(), AppError> {
     non_negative("treasury.budget_quote", treasury.budget_quote)?;
     positive("treasury.proposal_quote", treasury.proposal_quote)?;
-    nonzero("treasury.proposal_ttl_secs", treasury.proposal_ttl_secs)
+    nonzero("treasury.proposal_ttl_secs", treasury.proposal_ttl_secs)?;
+    positive("treasury.slice_quote", treasury.slice_quote)?;
+    fraction(
+        "treasury.max_daily_volume_share",
+        treasury.max_daily_volume_share,
+    )
 }
 
 pub fn check_feed(feed: &FeedConfig) -> Result<(), AppError> {

@@ -3,3 +3,4 @@
 
 pub mod desk;
 pub mod proposal;
+pub mod slicing;

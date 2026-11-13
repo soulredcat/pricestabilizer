@@ -100,12 +100,12 @@ fn treasury_proposes_but_never_buys_unapproved() {
             .get("treasury_proposed")
             .is_some_and(|count| *count > 0)
     );
-    assert_eq!(summary.events.get("treasury_executed"), None);
+    assert_eq!(summary.events.get("treasury_bought"), None);
     assert_eq!(summary.treasury_spent, 0.0);
 }
 
 #[test]
-fn approved_proposal_is_bought_once() {
+fn an_approved_proposal_is_bought_in_slices() {
     let approvals: Vec<String> = (1..=5)
         .map(|hour| {
             format!(
@@ -114,12 +114,20 @@ fn approved_proposal_is_bought_once() {
             )
         })
         .collect();
-    let summary = run_with(
-        &with_commands("pricestabilizer-approve.jsonl", &approvals),
-        "steady_bear",
+    // Let the treasury buy even while the price sits inside the band, to
+    // exercise the slicing alone.
+    let config = with_commands("pricestabilizer-approve.jsonl", &approvals).replace(
+        "only_outside_own_band = true",
+        "only_outside_own_band = false",
     );
-    assert_eq!(summary.events.get("treasury_executed"), Some(&1));
-    assert!((summary.treasury_spent - 250.0).abs() < 1e-9);
+    let summary = run_with(&config, "steady_bear");
+    assert_eq!(
+        summary.events.get("treasury_bought"),
+        Some(&5),
+        "250 in slices of 50"
+    );
+    assert_eq!(summary.events.get("treasury_completed"), Some(&1));
+    assert!((summary.treasury_spent - 250.0).abs() < 1e-6);
 }
 
 #[test]

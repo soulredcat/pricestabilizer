@@ -76,7 +76,11 @@ treasury_quote = 1000.0
 budget_quote = 1000.0           # approved accumulation budget (treasury wallet)
 proposal_quote = 250.0          # one proposal; an operator must approve it
 min_proposal_interval_secs = 86400
-proposal_ttl_secs = 21600       # unapproved proposals expire after 6 hours
+proposal_ttl_secs = 21600       # unapproved (or idle approved) proposals expire after 6 hours
+slice_quote = 50.0              # an approved proposal is bought in slices of at most this
+min_slice_interval_secs = 1800  # ...at least this far apart
+max_daily_volume_share = 0.1    # ...and below 10% of the day's market volume
+only_outside_own_band = true    # never buy against the project's own liquidity
 
 [feed]
 source = "scenario"

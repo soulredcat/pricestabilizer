@@ -13,11 +13,14 @@ pub struct Proposal {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TreasuryEvent {
     Proposed(u64),
-    Executed {
+    /// One slice of an approved proposal was bought.
+    Bought {
         id: u64,
         quote: f64,
     },
-    /// Approved, but the order was blocked by the risk gate or failed.
+    /// The whole proposal has been bought.
+    Completed(u64),
+    /// A slice was blocked by the risk gate or failed; the proposal closes.
     NotFilled(u64),
     Rejected(u64),
     Expired(u64),
@@ -29,7 +32,8 @@ impl TreasuryEvent {
     pub fn label(self) -> &'static str {
         match self {
             Self::Proposed(_) => "treasury_proposed",
-            Self::Executed { .. } => "treasury_executed",
+            Self::Bought { .. } => "treasury_bought",
+            Self::Completed(_) => "treasury_completed",
             Self::NotFilled(_) => "treasury_not_filled",
             Self::Rejected(_) => "treasury_rejected",
             Self::Expired(_) => "treasury_expired",
@@ -41,7 +45,8 @@ impl TreasuryEvent {
     pub fn proposal_id(self) -> u64 {
         match self {
             Self::Proposed(id)
-            | Self::Executed { id, .. }
+            | Self::Bought { id, .. }
+            | Self::Completed(id)
             | Self::NotFilled(id)
             | Self::Rejected(id)
             | Self::Expired(id)

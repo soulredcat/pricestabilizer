@@ -23,6 +23,7 @@ use crate::state::engine_state::{EngineState, STATE_VERSION};
 use crate::state::state_file;
 use crate::treasury::desk::TreasuryDesk;
 use crate::treasury::proposal::TreasuryEvent;
+use crate::treasury::slicing::SliceConditions;
 use crate::venue::venue_factory::open_venue;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -126,22 +127,31 @@ impl TradingSession {
         }
         self.protected = protection.is_some();
         let mut treasury_events = Vec::new();
-        let buy = self.treasury.on_tick(
-            snapshot.timestamp,
+        let conditions = SliceConditions {
+            now: snapshot.timestamp,
+            daily_volume: decision.price.daily_volume,
+            spot_in_own_band: decision.spot_in_band == Some(true),
+        };
+        let slice = self.treasury.on_tick(
             decision.mode,
             decision.price.is_trusted(),
+            &conditions,
             &mut treasury_events,
         );
         let request = ExecutionRequest {
             action: decision.liquidity,
             capital_share: decision.capital_share,
-            treasury_buy_quote: buy.map(|proposal| proposal.quote),
+            treasury_buy_quote: slice.map(|slice| slice.quote),
             valuation_price: decision.price.twap,
         };
         let outcome = self.executor.on_decision(snapshot, &request);
-        if let Some(proposal) = buy {
-            self.treasury
-                .settle(proposal, outcome.treasury_spent, &mut treasury_events);
+        if let Some(slice) = slice {
+            self.treasury.settle(
+                slice,
+                outcome.treasury_spent,
+                snapshot.timestamp,
+                &mut treasury_events,
+            );
         }
         events.extend(treasury_events.into_iter().map(TickEvent::Treasury));
         self.feedback = outcome.feedback;
@@ -184,10 +194,12 @@ impl TradingSession {
                 TickEvent::Operator(OperatorEvent::Reconciled)
             }
             OperatorCommand::Reconcile => TickEvent::Operator(OperatorEvent::ReconcileFailed),
-            OperatorCommand::Approve { proposal } => match self.treasury.approve(proposal) {
-                Some(event) => TickEvent::Treasury(event),
-                None => return,
-            },
+            OperatorCommand::Approve { proposal } => {
+                match self.treasury.approve(proposal, timestamp) {
+                    Some(event) => TickEvent::Treasury(event),
+                    None => return,
+                }
+            }
             OperatorCommand::Reject { proposal } => {
                 TickEvent::Treasury(self.treasury.reject(proposal))
             }

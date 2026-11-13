@@ -265,6 +265,14 @@ their `at` time.
   `[feed @ 1767229200] treasury_proposed #1`. Only an `approve` naming that
   number lets the treasury buy, and only while the price is trusted and the
   engine is not in protection. Unapproved proposals expire.
+- An approved proposal is bought in slices of at most `slice_quote`, at
+  least `min_slice_interval_secs` apart, never more in a UTC day than
+  `max_daily_volume_share` of the market's estimated daily volume, and each
+  slice is anchored to the TWAP. With `only_outside_own_band = true` slices
+  wait while the price sits inside the project's own band, so the treasury
+  never trades against the project's own liquidity. An approval that buys
+  nothing for `proposal_ttl_secs` expires; a slice that fails closes the
+  proposal; `reject` cancels whatever is left.
 
 ## State and restarts
 

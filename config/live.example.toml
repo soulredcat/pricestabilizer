@@ -74,6 +74,10 @@ budget_quote = 1000.0
 proposal_quote = 100.0
 min_proposal_interval_secs = 86400
 proposal_ttl_secs = 21600
+slice_quote = 25.0
+min_slice_interval_secs = 3600
+max_daily_volume_share = 0.05
+only_outside_own_band = true
 
 [feed]
 source = "follow"

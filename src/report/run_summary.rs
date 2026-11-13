@@ -114,7 +114,7 @@ impl RunSummary {
         self.books = outcome.books.or(self.books);
         for event in &report.events {
             bump(&mut self.events, event.label());
-            if let TickEvent::Treasury(TreasuryEvent::Executed { quote, .. }) = event {
+            if let TickEvent::Treasury(TreasuryEvent::Bought { quote, .. }) = event {
                 self.treasury_spent += quote;
             }
         }
