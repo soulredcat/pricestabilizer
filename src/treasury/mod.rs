@@ -4,3 +4,6 @@
 pub mod desk;
 pub mod proposal;
 pub mod slicing;
+
+#[cfg(test)]
+mod desk_tests;
